@@ -13,7 +13,7 @@ Thread model: posix
 ```
 ## Changes from Upstream
 - Fixed build issues with Apple Clang
-- Updated CMake configuration for macOS
+- Updated Make configuration for macOS
 - Portability fixes
 
 ## P2C: Plan-to-C Query Compiler
