@@ -157,7 +157,7 @@ struct Exp {
    // set of all IUs used in this expression
    virtual IUSet iusUsed() = 0;
    // destructor
-   virtual ~Exp(){};
+   virtual ~Exp() {};
 };
 
 // expression that simply references an IU
@@ -180,7 +180,7 @@ struct ConstExp : public Exp {
    T x;
 
    // constructor
-   ConstExp(T x) : x(x){};
+   ConstExp(T x) : x(x) {};
    // destructor
    ~ConstExp() {}
 
@@ -370,11 +370,11 @@ struct Sort : public Operator {
       // define custom comparator
       genBlock("struct", [&]() {
          genBlock(format("bool operator()(const tuple<{0}>& lhs, const tuple<{0}>& rhs) const",
-                              formatTypes(allIUs)),
+                         formatTypes(allIUs)),
                   [&]() {
             for (size_t i = 0; i != keyIUs.size(); i++) {
                print("if (get<{0}>(lhs) != get<{0}>(rhs)) return get<{0}>(lhs) {1} get<{0}>(rhs);\n", i,
-                          ascending[i] ? "<" : ">");
+                     ascending[i] ? "<" : ">");
             }
             print("return false;\n");
          });
@@ -417,8 +417,8 @@ struct Aggregate {
 struct CountAggregate final : Aggregate {
    CountAggregate(string name) : Aggregate(name, Type::Integer) {}
    string genInitValue() override { return "1"; }
-   string genUpdate(string oldValueRef) override { 
-      return format("{} += 1", oldValueRef); 
+   string genUpdate(string oldValueRef) override {
+      return format("{} += 1", oldValueRef);
    }
 };
 
@@ -435,7 +435,7 @@ struct SumAggregate final : Aggregate {
    SumAggregate(string name, IU* _inputIU) : Aggregate(name, _inputIU) {}
 
    string genInitValue() override { return format("{}", inputIU->varname); }
-   string genUpdate(string oldValueRef) override { 
+   string genUpdate(string oldValueRef) override {
       return format("{} += {}", oldValueRef, inputIU->varname);
    }
 };

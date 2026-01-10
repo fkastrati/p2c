@@ -11,7 +11,7 @@
 using namespace p2c;
 namespace fs = std::filesystem;
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
    // takes one argument: the directory containing all database tables
    assert(argc == 2);
    fs::path iprefix(argv[1]);
