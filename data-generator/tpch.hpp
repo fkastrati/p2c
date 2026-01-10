@@ -15,10 +15,10 @@ namespace csv {
 template<typename T>
 requires is_p2c_type<T>
 struct Parser<T> {
-   static constexpr char const *TYPE_NAME = TYPE_NAMES[type_tag<T>::tag];
+   static constexpr char const* TYPE_NAME = TYPE_NAMES[type_tag<T>::tag];
 
    template<char delim, char eol = '\n'>
-   inline T parse_value(CharIter &pos) {
+   inline T parse_value(CharIter& pos) {
       auto start = pos.iter;
       find_either<delim, eol>(pos);
       assert(pos.iter != nullptr && (*pos.iter == delim || *pos.iter == eol));

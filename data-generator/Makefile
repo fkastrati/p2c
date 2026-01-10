@@ -3,8 +3,18 @@
 #
 # @file
 # @version 0.1
+# Platform-specific flags
+UNAME_S := $(shell uname -s)
+FLAGS = -Wall -std=c++23 -pthread 
+ifeq ($(UNAME_S),Darwin)
+  # Mac OS X specific flags
+  FLAGS += -arch arm64
+else
+  # Linux specific flags
+  FLAGS += -mavx2
+endif
+
 COMPILER = g++
-FLAGS = -Wall -std=c++23 -pthread -mavx2 
 DEBUG_FLAGS = -g -fno-omit-frame-pointer -fsanitize=address -O0
 RELEASE_FLAGS = -O3
 

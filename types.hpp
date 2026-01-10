@@ -10,6 +10,8 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <system_error>
+
 
 namespace p2c {
 
@@ -52,10 +54,10 @@ concept is_p2c_type = requires { type_tag<T>::tag; };
 // parse a string to a type
 template<typename type>
 requires is_p2c_type<type>
-type stringToType(const char *str, uint32_t strLen) {
+type stringToType(const char* str, uint32_t strLen) {
    type parsed;
-   auto result = std::from_chars(str, str + strLen, &parsed, 10);
-   if (result == std::errc()) {
+   auto result = std::from_chars(str, str + strLen, parsed, 10);
+   if (result.ec == std::errc()) {
       return parsed;
    } else {
       throw std::logic_error("Error while parsing " + std::string(str) + " to " + tname(type_tag<type>::tag));
@@ -72,7 +74,7 @@ struct type_tag<char> {
 };
 
 template<>
-inline char stringToType(const char *str, uint32_t strLen) {
+inline char stringToType(const char* str, uint32_t strLen) {
    assert(strLen == 1);
    return *str;
 }
@@ -105,7 +107,7 @@ struct type_tag<std::string_view> {
 };
 
 template<>
-inline std::string_view stringToType(const char *str, uint32_t strLen) {
+inline std::string_view stringToType(const char* str, uint32_t strLen) {
    return {str, strLen};
 };
 
@@ -134,10 +136,10 @@ struct date {
    date(unsigned year, unsigned month, unsigned day) : date(toInt(year, month, day)) {}
 
    /// Comparison
-   inline friend auto operator<=>(const date &d1, const date &d2) = default;
+   inline friend auto operator<=>(const date& d1, const date& d2) = default;
 
    /// Output
-   friend std::ostream &operator<<(std::ostream &out, const date &date) {
+   friend std::ostream& operator<<(std::ostream& out, const date& date) {
       unsigned year, month, day;
       fromInt(date.value, year, month, day);
       char buffer[30];
@@ -146,7 +148,7 @@ struct date {
    }
 
    // Julian Day Algorithm from the Calendar FAQ
-   static void fromInt(unsigned date, unsigned &year, unsigned &month, unsigned &day) {
+   static void fromInt(unsigned date, unsigned& year, unsigned& month, unsigned& day) {
       unsigned a = date + 32044;
       unsigned b = (4 * a + 3) / 146097;
       unsigned c = a - ((146097 * b) / 4);
@@ -170,7 +172,7 @@ struct date {
 
 // TODO use cdate for parsing
 template<>
-inline date stringToType(const char *str, uint32_t strLen) {
+inline date stringToType(const char* str, uint32_t strLen) {
    auto iter = str, limit = str + strLen;
    // Trim WS
    while ((iter != limit) && ((*iter) == ' '))
@@ -235,8 +237,8 @@ struct hash<p2c::date> {
 
 template<typename... Args>
 struct hash<tuple<Args...>> {
-   inline size_t operator()(const tuple<Args...> &args) const {
-      return fold_tuple(args, 0ul, [](const size_t acc, const auto &val) -> uint64_t {
+   inline size_t operator()(const tuple<Args...>& args) const {
+      return fold_tuple(args, 0ul, [](const size_t acc, const auto& val) -> uint64_t {
          hash<typename decay<decltype(val)>::type> hasher;
          return hasher(val) ^ acc;
       });
@@ -244,7 +246,7 @@ struct hash<tuple<Args...>> {
 
 private:
    template<typename T, typename F, unsigned I = 0, typename... Tuple>
-   constexpr inline static T fold_tuple(const tuple<Tuple...> &tuple, T acc_or_init, const F &fn) {
+   constexpr inline static T fold_tuple(const tuple<Tuple...>& tuple, T acc_or_init, const F& fn) {
       if constexpr (I == sizeof...(Args)) {
          return acc_or_init;
       } else {
@@ -261,9 +263,9 @@ private:
 template<>
 struct std::formatter<p2c::date> {
    // Parses format specifications; we have none at the moment
-   constexpr auto parse(format_parse_context &ctx) -> decltype(ctx.begin()) { return ctx.end(); }
+   constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) { return ctx.end(); }
    template<typename FormatContext>
-   auto format(const p2c::date &d, FormatContext &ctx) const -> decltype(ctx.out()) {
+   auto format(const p2c::date& d, FormatContext& ctx) const -> decltype(ctx.out()) {
       // ctx.out() is an output iterator to write to.
       unsigned year, month, day;
       p2c::date::fromInt(d.value, year, month, day);

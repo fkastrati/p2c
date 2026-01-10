@@ -17,20 +17,20 @@ template<typename T = char>
 struct FileMapping {
    uintptr_t file_size;
    int handle;
-   T *mapping;
+   T* mapping;
 
-   using iterator = T *;
+   using iterator = T*;
 
 public:
    FileMapping() : file_size(0), handle(-1), mapping(nullptr) {}
-   FileMapping(const std::string &filename, int flags = 0, uintptr_t size = 0) : FileMapping() {
+   FileMapping(const std::string& filename, int flags = 0, uintptr_t size = 0) : FileMapping() {
       open(filename.data(), flags, size);
    }
    FileMapping(uintptr_t size, int flags = 0) : FileMapping() { open(nullptr, flags, size); }
-   FileMapping(FileMapping &&other) { *this = std::move(other); }
+   FileMapping(FileMapping&& other) { *this = std::move(other); }
    ~FileMapping() { close(); }
 
-   FileMapping &operator=(FileMapping &&other) {
+   FileMapping& operator=(FileMapping&& other) {
       handle = other.handle;
       file_size = other.file_size;
       mapping = other.mapping;
@@ -42,7 +42,7 @@ public:
 
    inline bool is_backed() { return handle != -1; }
 
-   inline void open(const char *file, int flags, std::size_t size) {
+   inline void open(const char* file, int flags, std::size_t size) {
       close();
       int h = -1;
       if (file) {
@@ -66,7 +66,8 @@ public:
       }
       file_size = size;
 
-      auto mmap_perm = (flags == 0) ? PROT_READ : (flags & O_WRONLY) ? PROT_WRITE : PROT_READ | PROT_WRITE;
+      auto mmap_perm = (flags == 0) ? PROT_READ : (flags & O_WRONLY) ? PROT_WRITE
+                                                                     : PROT_READ | PROT_WRITE;
       auto mmap_type = h == -1 ? MAP_PRIVATE | MAP_ANONYMOUS : MAP_SHARED;
       auto m = mmap(nullptr, file_size, mmap_perm, mmap_type, h, 0);
       if (m == MAP_FAILED) {
@@ -75,11 +76,13 @@ public:
          throw std::logic_error("Could not map file: " + std::string(strerror(err)));
       }
       if (file_size > 1024 * 1024) {
-         madvise(m, file_size, MADV_HUGEPAGE);
+         // madvise(m, file_size, MADV_HUGEPAGE);
+         // for macOS use MADV_WILLNEED as MADV_HUGEPAGE is not available
+         madvise(m, file_size, MADV_WILLNEED);
       }
 
       handle = h;
-      mapping = static_cast<T *>(m);
+      mapping = static_cast<T*>(m);
    }
 
    inline void close() {
@@ -95,11 +98,13 @@ public:
 
    inline void flush() const {
       if (handle >= 0) {
-         ::fdatasync(handle);
+         // ::fdatasync(handle);
+         // MAC OS does not have fdatasync, use fsync instead
+         ::fsync(handle);
       }
    }
 
-   inline T *data() const { return mapping; }
+   inline T* data() const { return mapping; }
    inline const iterator begin() const { return data(); }
    inline const iterator end() const { return data() + (this->file_size / sizeof(T)); }
 };
@@ -124,7 +129,7 @@ struct variable_size {
 template<typename T>
 struct DataColumn : FileMapping<T> {
    using size_tag = fixed_size;
-   using iterator = T *;
+   using iterator = T*;
    using value_type = T;
 
    static constexpr uintptr_t GLOBAL_OVERHEAD = 0;
@@ -133,18 +138,18 @@ struct DataColumn : FileMapping<T> {
    uintptr_t count = 0ul;
 
    DataColumn() : FileMapping<T>() {}
-   DataColumn(const char *filename, int flags = 0, uintptr_t size = 0)
+   DataColumn(const char* filename, int flags = 0, uintptr_t size = 0)
        : FileMapping<T>(filename, flags, size),
          count(this->file_size / sizeof(T)) {
       assert(this->file_size % sizeof(T) == 0);
    }
-   DataColumn(const std::string &filename, int flags = 0, uintptr_t size = 0)
+   DataColumn(const std::string& filename, int flags = 0, uintptr_t size = 0)
        : DataColumn(filename.data(), flags, size) {}
 
-   DataColumn(const DataColumn &) = delete;
-   DataColumn(DataColumn &&other) { *this = std::move(other); }
+   DataColumn(const DataColumn&) = delete;
+   DataColumn(DataColumn&& other) { *this = std::move(other); }
 
-   DataColumn &operator=(DataColumn &&o) {
+   DataColumn& operator=(DataColumn&& o) {
       FileMapping<T>::operator=(std::move(o));
       count = o.count;
       o.count = 0;
@@ -152,7 +157,7 @@ struct DataColumn : FileMapping<T> {
    }
 
    uintptr_t size() const { return count; }
-   const T &operator[](std::size_t idx) const { return this->data()[idx]; }
+   const T& operator[](std::size_t idx) const { return this->data()[idx]; }
 };
 
 template<>
@@ -166,9 +171,9 @@ struct DataColumn<std::string_view> : FileMapping<variable_size::StringData> {
 
    struct iterator {
       uint64_t idx;
-      Data *data;
+      Data* data;
 
-      inline iterator &operator++() {
+      inline iterator& operator++() {
          ++idx;
          return *this;
       }
@@ -181,37 +186,37 @@ struct DataColumn<std::string_view> : FileMapping<variable_size::StringData> {
 
       std::string_view operator*() {
          auto slot = data->slot[idx];
-         return std::string_view(reinterpret_cast<char *>(data) + slot.offset, slot.size);
+         return std::string_view(reinterpret_cast<char*>(data) + slot.offset, slot.size);
       }
 
-      bool operator==(const iterator &rhs) { return this->idx == rhs.idx && this->data == rhs.data; }
+      bool operator==(const iterator& rhs) { return this->idx == rhs.idx && this->data == rhs.data; }
    };
 
    DataColumn() : FileMapping<Data>() {}
-   DataColumn(const char *filename, int flags = 0, uintptr_t size = 0)
+   DataColumn(const char* filename, int flags = 0, uintptr_t size = 0)
        : FileMapping<Data>(filename, flags, size) {}
-   DataColumn(const std::string &filename, int flags = 0, uintptr_t size = 0)
+   DataColumn(const std::string& filename, int flags = 0, uintptr_t size = 0)
        : DataColumn(filename.data(), flags, size) {}
 
-   DataColumn(const DataColumn &other) = delete;
-   DataColumn(DataColumn &&other) : FileMapping<Data>(std::move(other)) {}
+   DataColumn(const DataColumn& other) = delete;
+   DataColumn(DataColumn&& other) : FileMapping<Data>(std::move(other)) {}
 
-   DataColumn &operator=(DataColumn &&o) {
+   DataColumn& operator=(DataColumn&& o) {
       FileMapping<Data>::operator=(std::move(o));
       return *this;
    };
 
-   Data *data() const { return this->mapping; }
+   Data* data() const { return this->mapping; }
    uintptr_t size() const { return data()->count; }
 
    inline const iterator begin() const { return iterator{0, data()}; }
    inline const iterator end() const { return iterator{data()->count, data()}; }
 
-   inline variable_size::StringIndexSlot &slot_at(std::size_t idx) const { return data()->slot[idx]; }
+   inline variable_size::StringIndexSlot& slot_at(std::size_t idx) const { return data()->slot[idx]; }
 
    inline std::string_view operator[](std::size_t idx) const {
       auto slot = data()->slot[idx];
-      return std::string_view(reinterpret_cast<char *>(data()) + slot.offset, slot.size);
+      return std::string_view(reinterpret_cast<char*>(data()) + slot.offset, slot.size);
    }
 };
 }  // namespace p2c

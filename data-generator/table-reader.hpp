@@ -27,7 +27,7 @@ struct ColumnOutput {
 
    ~ColumnOutput() {}
 
-   bool append(const T &val) {
+   bool append(const T& val) {
       items.push_back(val);
       if constexpr (page_t::size_tag::IS_VARIABLE) {
          output_size += val.size() + page_t::PER_ITEM_OVERHEAD;
@@ -37,13 +37,13 @@ struct ColumnOutput {
       return true;
    }
 
-   page_t make_page(const char *filename) const {
+   page_t make_page(const char* filename) const {
       auto page = page_t(filename, O_CREAT | O_RDWR, output_size);
       if constexpr (page_t::size_tag::IS_VARIABLE) {
          auto idx = 0ul;
          auto offset = page.file_size;
-         char *data = reinterpret_cast<char *>(page.data());
-         for (auto &str : items) {
+         char* data = reinterpret_cast<char*>(page.data());
+         for (auto& str : items) {
             offset -= str.size();
             std::copy(str.begin(), str.end(), data + offset);
             page.slot_at(idx++) = {str.size(), offset};
@@ -64,12 +64,12 @@ struct TableImport {
    outputs_t outputs;
    std::vector<FileMapping<char>> inputs;
 
-   TableImport(const char *filename)
+   TableImport(const char* filename)
        : outputs(), inputs(open(filename)) {}
 
    ~TableImport() {}
 
-   static std::vector<FileMapping<char>> open(const char *filename) {
+   static std::vector<FileMapping<char>> open(const char* filename) {
       namespace fs = std::filesystem;
       std::vector<FileMapping<char>> result;
       auto path = fs::path(filename);
@@ -78,7 +78,7 @@ struct TableImport {
          return result;
       }
       auto tblname = path.filename();
-      for (auto &f : fs::directory_iterator(path.parent_path())) {
+      for (auto& f : fs::directory_iterator(path.parent_path())) {
          if (!f.is_regular_file()) {
             continue;
          }
@@ -97,9 +97,9 @@ struct TableImport {
          columns[i] = i;
       }
       unsigned rows = 0;
-      for (auto &input : inputs) {
-         rows += csv::read_file<delim>(input, columns, [&](unsigned col, csv::CharIter &pos) {
-            fold_outputs(0, [&](auto &output, unsigned idx, unsigned num, unsigned v) {
+      for (auto& input : inputs) {
+         rows += csv::read_file<delim>(input, columns, [&](unsigned col, csv::CharIter& pos) {
+            fold_outputs(0, [&](auto& output, unsigned idx, unsigned num, unsigned v) {
                if (idx == col) {
                   using value_t = typename std::remove_reference<decltype(output)>::type::value_t;
                   csv::Parser<value_t> parser;
@@ -120,7 +120,7 @@ struct TableImport {
    size_t row_count() { return std::get<0>(outputs).items.size(); }
 
    template<typename T, typename F, unsigned I = 0>
-   constexpr T fold_outputs(T init_value, const F &fn) {
+   constexpr T fold_outputs(T init_value, const F& fn) {
       if constexpr (I == sizeof...(Ts)) {
          return init_value;
       } else {
@@ -134,11 +134,11 @@ struct TableReader : TableImport<Ts...> {
    using super_t = TableImport<Ts...>;
    std::array<std::string, sizeof...(Ts)> output_files;
 
-   TableReader(const std::string &output_prefix, const char *filename, char const *const *colnames)
+   TableReader(const std::string& output_prefix, const char* filename, char const* const* colnames)
        : super_t(filename) {
       // initialize output files
       std::filesystem::create_directories(output_prefix);
-      this->fold_outputs(0, [&](const auto &output, unsigned idx, unsigned num, unsigned v) {
+      this->fold_outputs(0, [&](const auto& output, unsigned idx, unsigned num, unsigned v) {
          output_files[idx] = output_prefix + colnames[idx] + ".bin";
          return 0;
       });
@@ -146,7 +146,7 @@ struct TableReader : TableImport<Ts...> {
 
    ~TableReader() {
       // write to files
-      this->fold_outputs(0, [&](const auto &output, unsigned idx, unsigned num, unsigned v) {
+      this->fold_outputs(0, [&](const auto& output, unsigned idx, unsigned num, unsigned v) {
          auto page = output.make_page(output_files[idx].c_str());
          page.flush();
          // for (auto item : page) {

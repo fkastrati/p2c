@@ -131,7 +131,7 @@ public:
       uint64_t tupleCount{r_regionkey.size()};
    } region{{this, "region"}};
 
-   TPCH(const std::string& path) : DatabaseAutoload(path){};
+   TPCH(const std::string& path) : DatabaseAutoload(path) {};
 
    using enum Type;
    inline static std::map<std::string, std::vector<std::pair<std::string, Type>>> schema = {
