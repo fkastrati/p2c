@@ -1,6 +1,6 @@
 # P2C: Plan-to-C Query Compiler
 **This is a forked repo from https://github.com/viktorleis/p2c.git 
-update in order to run in MacOS. Tested using on a Mac equippied with M4 processor. ** 
+updated in order to run in MacOS. Tested using on a Mac equippied with M4 processor.**
 
 p2c is an educational compiling query engine.
 Given an operator tree (query plan), it generates C++ code (hence plan-to-code).
