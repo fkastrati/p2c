@@ -31,6 +31,7 @@ Components:
 - **`tpch.hpp`** - TPC-H schema definitions and database autoloading
 - **`io.hpp`** - Memory-mapped I/O with columnar data access
 - **`queryFrame.cpp`** - Runtime framework that executes generated code
+- **`operators.hpp`** - Physical operators and expressions
 
 ## Getting Started
 

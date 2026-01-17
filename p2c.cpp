@@ -60,6 +60,12 @@ void simple_test_query() {
 
    auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{p_partkey, p_name});
 
+   // DEBUG: Print the tree structure
+   std::cout << "--- Query Plan ---" << std::endl;
+   PlanPrinter printer;
+   print->accept(printer);
+   std::cout << "------------------" << std::endl;
+
    unsigned perfRepeat = 2; // adjust as needed
    genBlock(std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
        // Run the pipeline
@@ -153,13 +159,21 @@ void tpch_q5() {
       auto revenue = gb->getIU("revenue");
 
       auto sort = std::make_unique<Sort>(std::move(gb), std::vector<IU*>{revenue}, std::vector<bool>{false});
+
+
+      // DEBUG: Print the tree structure
+      // std::cout << "--- Query Plan ---" << std::endl;
+      // PlanPrinter printer;
+      // sort->accept(printer);
+      // std::cout << "\n------------------" << std::endl;
+
       produceAndPrint(std::move(sort), {n_name, revenue});
 
    }
 }
 
 int main(int argc, char* argv[]) {
-   // tpch_q5();
-   simple_test_query();
+   tpch_q5();
+   // simple_test_query();
    return 0;
 }

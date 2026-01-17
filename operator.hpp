@@ -6,11 +6,36 @@
 #include <source_location>
 #include <string>
 #include <vector>
+#include <iostream>
 
 #include "tpch.hpp"
 #include "types.hpp"
 
 namespace systemJTX {
+
+// -----------------------------------------------------------------------------
+// Forward Declarations
+// -----------------------------------------------------------------------------
+struct Scan;
+struct Selection; 
+struct Map;
+struct Sort;      
+struct GroupBy;
+struct HashJoin;
+struct Limit;     
+struct Print;     
+
+struct OperatorVisitor {
+   virtual ~OperatorVisitor() = default;
+   virtual void visit(Scan& op) = 0;
+   virtual void visit(Selection& op) = 0;
+   virtual void visit(Map& op) = 0;
+   virtual void visit(Sort& op) = 0;
+   virtual void visit(GroupBy& op) = 0;
+   virtual void visit(HashJoin& op) = 0;
+   virtual void visit(Limit& op) = 0;
+   virtual void visit(Print& op) = 0;
+};
 
 struct IUSet;
 
@@ -222,14 +247,13 @@ struct FnExp : public Exp {
 //------------------------------------------------------------------------------
 
 struct Operator {
+   virtual ~Operator() = default;
    // compute *all* IUs this operator can produce
    virtual IUSet availableIUs() = 0;
-
    // generate code for operator providing 'required' IUs and pushing them to 'consume' callback
    virtual void produce(const IUSet& required, ConsumerFn consume) = 0;
-
-   // destructor
-   virtual ~Operator() {}
+   // accept visitor
+   virtual void accept(OperatorVisitor& v) = 0;
 };
 
 // table scan operator
@@ -275,6 +299,8 @@ struct Scan : public Operator {
             return &iu;
       throw;
    }
+
+   void accept(OperatorVisitor& v) override { v.visit(*this); }
 };
 
 // selection operator
@@ -296,6 +322,8 @@ struct Selection : public Operator {
          });
       });
    }
+
+   void accept(OperatorVisitor& v) override { v.visit(*this); }
 };
 
 // map operator (compute new value)
@@ -327,6 +355,8 @@ struct Map : public Operator {
          return &iu;
       throw;
    }
+
+   void accept(OperatorVisitor& v) override { v.visit(*this); }
 };
 
 // sort operator
@@ -382,6 +412,8 @@ struct Sort : public Operator {
          consume();
       });
    };
+
+   void accept(OperatorVisitor& v) override { v.visit(*this); }
 };
 
 // abstract base class for aggregate functions using in group by
@@ -396,6 +428,7 @@ struct Aggregate {
 
    virtual std::string genInitValue() = 0;
    virtual std::string genUpdate(std::string oldValueRef) = 0;
+
 };
 
 struct CountAggregate final : Aggregate {
@@ -500,6 +533,8 @@ struct GroupBy : public Operator {
             return &agg->resultIU;
       throw;
    }
+
+   void accept(OperatorVisitor& v) override { v.visit(*this); }
 };
 
 // hash join operator
@@ -552,6 +587,8 @@ struct HashJoin : public Operator {
          });
       });
    }
+
+   void accept(OperatorVisitor& v) override { v.visit(*this); }
 };
 
 
@@ -581,6 +618,8 @@ struct Limit : public Operator {
       // Label to jump to when limit is reached
       std::print("{}:;\n", labelVar);
    }
+
+   void accept(OperatorVisitor& v) override { v.visit(*this); }
 };
 
 // print operator is the root operator that outputs the final result (i.e., sink operator)
@@ -597,7 +636,6 @@ struct Print : public Operator {
       IUSet reqFromChild = required | IUSet(iusToPrint);
 
       input->produce(reqFromChild, [&]() {
-         bool first = true;
          for (IU* iu : iusToPrint) { // projection list
             std::print("std::cout << {} << \" \";", iu->varname);
          }
@@ -606,6 +644,97 @@ struct Print : public Operator {
          // Call consume in case there is something above us (though Print is usually root)
          consume();
       });
+   }
+
+   void accept(OperatorVisitor& v) override { v.visit(*this); }
+};
+
+
+// -----------------------------------------------------------------------------
+// PlanPrinter Visitor: Visualizes the Query Tree
+// -----------------------------------------------------------------------------
+
+
+struct PlanPrinter : public OperatorVisitor {
+   int level = 0;
+
+   void indent() {
+      for (int i = 0; i < level; ++i) std::cout << "  ";
+   }
+
+   void visit(Scan& op) override {
+      indent();
+      // CORRECTED: Uses 'relName' as defined in operator.hpp
+      std::cout << "- Scan (" << op.relName << ")" << std::endl; 
+   }
+
+   void visit(Selection& op) override {
+      indent();
+      // 'pred' is the member name in operator.hpp
+      std::cout << "- Selection (filter: " << op.pred->compile() << ")" << std::endl;
+      
+      level++;
+      op.input->accept(*this); // 'input' is the member name
+      level--;
+   }
+
+   void visit(Map& op) override {
+      indent();
+      // 'iu.name' comes from the IU struct in operator.hpp
+      std::cout << "- Map (compute: " << op.iu.name << ")" << std::endl;
+      
+      level++;
+      op.input->accept(*this);
+      level--;
+   }
+
+   void visit(Sort& op) override {
+      indent();
+      std::cout << "- Sort" << std::endl;
+      
+      level++;
+      op.input->accept(*this);
+      level--;
+   }
+
+   void visit(GroupBy& op) override {
+      indent();
+      std::cout << "- GroupBy" << std::endl;
+      
+      level++;
+      op.input->accept(*this);
+      level--;
+   }
+
+   void visit(HashJoin& op) override {
+      indent();
+      std::cout << "- HashJoin" << std::endl;
+      
+      level++;
+      indent(); std::cout << "Left:" << std::endl;
+      op.left->accept(*this);
+      
+      indent(); std::cout << "Right:" << std::endl;
+      op.right->accept(*this);
+      level--;
+   }
+
+   void visit(Limit& op) override {
+      indent();
+      std::cout << "- Limit (" << op.limit << ")" << std::endl;
+      
+      level++;
+      op.input->accept(*this);
+      level--;
+   }
+
+   void visit(Print& op) override {
+      indent();
+      std::cout << "- Print" << std::endl;
+      
+      level++;
+      op.input->accept(*this);
+      level--;
    }
 };
 
