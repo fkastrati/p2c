@@ -10,7 +10,7 @@
 #include "tpch.hpp"
 #include "types.hpp"
 
-namespace p2c {
+namespace systemJTX {
 
 struct IUSet;
 
@@ -554,4 +554,59 @@ struct HashJoin : public Operator {
    }
 };
 
-}  // namespace p2c
+
+struct Limit : public Operator {
+   std::unique_ptr<Operator> input;
+   uint64_t limit;
+   std::string limitVar;
+   std::string labelVar;
+
+   Limit(std::unique_ptr<Operator> input, uint64_t limit) 
+      : input(std::move(input)), limit(limit) {
+      static unsigned counter = 0;
+      limitVar = std::format("limit_cnt_{}", counter);
+      labelVar = std::format("limit_end_{}", counter++);
+   }
+
+   IUSet availableIUs() override { return input->availableIUs(); }
+
+   void produce(const IUSet& required, ConsumerFn consume) override {
+      std::print("uint64_t {} = 0;\n", limitVar);
+      
+      input->produce(required, [&]() {
+         std::print("if ({}++ >= {}) goto {};\n", limitVar, limit, labelVar);
+         consume();
+      });
+
+      // Label to jump to when limit is reached
+      std::print("{}:;\n", labelVar);
+   }
+};
+
+// print operator is the root operator that outputs the final result (i.e., sink operator)
+struct Print : public Operator { 
+   std::unique_ptr<Operator> input;
+   std::vector<IU*> iusToPrint;
+
+   Print(std::unique_ptr<Operator> input, std::vector<IU*> ius) 
+      : input(std::move(input)), iusToPrint(ius) {}
+
+   IUSet availableIUs() override { return input->availableIUs(); }
+
+   void produce(const IUSet& required, ConsumerFn consume) override {
+      IUSet reqFromChild = required | IUSet(iusToPrint);
+
+      input->produce(reqFromChild, [&]() {
+         bool first = true;
+         for (IU* iu : iusToPrint) { // projection list
+            std::print("std::cout << {} << \" \";", iu->varname);
+         }
+         std::print("std::cout << std::endl;\n");
+         
+         // Call consume in case there is something above us (though Print is usually root)
+         consume();
+      });
+   }
+};
+
+}  // namespace systemJTX

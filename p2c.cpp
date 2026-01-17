@@ -18,7 +18,7 @@ using namespace fmt;
 
 #include "operator.hpp"
 
-using namespace p2c;
+using namespace systemJTX;
 
 // create a function call expression (helper)
 template<typename T>
@@ -49,6 +49,27 @@ void produceAndPrint(std::unique_ptr<Operator> root, const std::vector<IU*>& ius
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+void simple_test_query() {
+   // 1. Scan
+   auto scan = std::make_unique<Scan>("part");
+   IU* p_partkey = scan->getIU("p_partkey");
+   IU* p_name = scan->getIU("p_name");
+
+   // add the `limit' clause so that we do not print the entire table
+   auto limit = std::make_unique<Limit>(std::move(scan), 10);
+
+   auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{p_partkey, p_name});
+
+   unsigned perfRepeat = 2; // adjust as needed
+   genBlock(std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
+       // Run the pipeline
+       // The consumer lambda is empty because Print handles the output
+       print->produce(IUSet{}, [](){}); 
+   });
+
+   // produceAndPrint(std::move(limit), {p_partkey, p_name});
+}
+
 void tpch_q5() {
    // ------------------------------------------------------------
    // TPC-H Query 5; should return the following on sf1 according to umbra:
@@ -89,7 +110,7 @@ void tpch_q5() {
       IU* r_name = r->getIU("r_name");
       auto r_sel =
           std::make_unique<Selection>(std::move(r), makeCallExp("std::equal_to()", std::make_unique<IUExp>(r_name),
-                                                           std::make_unique<ConstExp<std::string_view>>("ASIA")));
+                                                                std::make_unique<ConstExp<std::string_view>>("ASIA")));
 
       auto n = std::make_unique<Scan>("nation");
       IU* n_nationkey = n->getIU("n_nationkey");
@@ -133,10 +154,12 @@ void tpch_q5() {
 
       auto sort = std::make_unique<Sort>(std::move(gb), std::vector<IU*>{revenue}, std::vector<bool>{false});
       produceAndPrint(std::move(sort), {n_name, revenue});
-   }
 
+   }
 }
 
 int main(int argc, char* argv[]) {
+   // tpch_q5();
+   simple_test_query();
    return 0;
 }

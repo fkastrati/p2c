@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace p2c {
+namespace systemJTX {
 
 template<typename T = char>
 struct FileMapping {
@@ -219,4 +219,4 @@ struct DataColumn<std::string_view> : FileMapping<variable_size::StringData> {
       return std::string_view(reinterpret_cast<char*>(data()) + slot.offset, slot.size);
    }
 };
-}  // namespace p2c
+}  // namespace systemJTX

@@ -12,7 +12,7 @@
 #include <system_error>
 #include <tuple>
 
-namespace p2c {
+namespace systemJTX {
 
 struct date;
 
@@ -220,15 +220,15 @@ inline date stringToType(const char* str, uint32_t strLen) {
       throw "invalid date format";
    return date(year, month, day);
 }
-}  // namespace p2c
+}  // namespace systemJTX
 
 ////////////////////////////////////////////////////////////////////////////////
 // std::hash for missing types
 namespace std {
 
 template<>
-struct hash<p2c::date> {
-   inline size_t operator()(p2c::date date) const {
+struct hash<systemJTX::date> {
+   inline size_t operator()(systemJTX::date date) const {
       hash<int32_t> value_hasher;
       return value_hasher(date.value);
    }
@@ -260,14 +260,14 @@ private:
 // from https://en.cppreference.com/w/cpp/utility/format/formatter.html
 // --------------------------------------------------------------------------
 template<>
-struct std::formatter<p2c::date> {
+struct std::formatter<systemJTX::date> {
    // Parses format specifications; we have none at the moment
    constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) { return ctx.end(); }
    template<typename FormatContext>
-   auto format(const p2c::date& d, FormatContext& ctx) const -> decltype(ctx.out()) {
+   auto format(const systemJTX::date& d, FormatContext& ctx) const -> decltype(ctx.out()) {
       // ctx.out() is an output iterator to write to.
       unsigned year, month, day;
-      p2c::date::fromInt(d.value, year, month, day);
+      systemJTX::date::fromInt(d.value, year, month, day);
       return std::format_to(ctx.out(), "({:04}-{:02}-{:02})", year, month, day);
    }
 };

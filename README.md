@@ -3,7 +3,7 @@
 This repository is a fork of  
 https://github.com/viktorleis/p2c
 
-It contains updates and fixes to ensure the code builds and runs correctly on **macOS**.
+with number of changes done to the original code.
 
 ## Tested Environment
 ```
@@ -15,6 +15,9 @@ Thread model: posix
 - Fixed build issues with Apple Clang
 - Updated Make configuration for macOS
 - Portability fixes
+- Large code restructuring and refactoring in order to allow for better readability and code extension
+- Added Print operator: The query logic is now entirely contained within the operator tree.
+- Added Limit operator: introduces the ability to stop execution early. By using goto label, we successfully break out of the deeply nested for loops that HashJoin and Scan generate, which a simple break would not achieve.
 
 ## P2C: Plan-to-C Query Compiler
 

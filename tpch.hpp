@@ -8,7 +8,7 @@
 #include "io.hpp"
 #include "types.hpp"
 
-namespace p2c {
+namespace systemJTX {
 
 class DatabaseAutoload {
    std::string base_path;
@@ -212,4 +212,4 @@ public:
         }}};
 };
 
-}  // namespace p2c
+}  // namespace systemJTX

@@ -10,7 +10,7 @@
 #include "tpch.hpp"
 
 using namespace std;
-using namespace p2c;
+using namespace systemJTX;
 
 int main(int argc, char** argv) {
    TPCH db(argc >= 2 ? argv[1] : "data-generator/output/");
