@@ -13,7 +13,6 @@ Thread model: posix
 ```
 ## Changes from Upstream
 - Fixed build issues with Apple Clang
-- Updated Make configuration for macOS
 - Portability fixes
 - Large code restructuring and refactoring in order to allow for better readability and code extension
 - Added Print operator: The query logic is now entirely contained within the operator tree.
