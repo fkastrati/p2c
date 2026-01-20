@@ -68,7 +68,10 @@ void dynamically_load_link(const std::string& db_path, const std::string& query_
         soFilename
     );
 
+    auto start = std::chrono::high_resolution_clock::now();
+    // Execute the compilation command
     int status = std::system(command.c_str());
+    auto end = std::chrono::high_resolution_clock::now();
 
    if (status != 0) {
         throw std::runtime_error(std::format("Compilation of {} failed", query_filename));
@@ -80,6 +83,8 @@ void dynamically_load_link(const std::string& db_path, const std::string& query_
       throw std::runtime_error(std::format("Cannot load library: {} ", soFilename));
    }
 
+   std::chrono::duration<double, std::milli> duration = end - start;
+   std::cout << std::format("Compilation finished in {:.2f} ms", duration.count()) << std::endl;
 
    // Locate the Function
    auto execute_query = (query_func_t)dlsym(handle, "execute_query");
@@ -90,9 +95,7 @@ void dynamically_load_link(const std::string& db_path, const std::string& query_
 
 
    TPCH db(db_path);
-   std::cout << "Step 3: Executing Query...\n---\n";
    execute_query(db);
-   std::cout << "---\nQuery Complete.\n";
 
    dlclose(handle);
 }
