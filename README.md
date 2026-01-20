@@ -13,8 +13,8 @@ Thread model: posix
 - Fixed build issues with Apple Clang
 - Portability fixes
 - Large code restructuring and refactoring in order to allow for better readability and code extension
-- Added Print operator: The query logic is now entirely contained within the operator tree.
-- Added Limit operator: introduces the ability to stop execution early. By using goto label, we successfully break out of the deeply nested for loops that HashJoin and Scan generate, which a simple break would not achieve.
+- Added `Print` operator: The query logic is now entirely contained within the operator tree.
+- Added `Limit` operator: introduces the ability to stop execution early. By using `goto label`, we successfully break out of the deeply nested for loops that HashJoin and Scan generate, which a simple break would not achieve.
 - Operators' interface has been updated such that it allows for efficient double dispatching (i.e., visitor pattern), this way one can traverse the plan tree without having to modify each Operator/Expr;
 - Pretty Plan priting using the newly added visitor pattern
 - High-Efficiency Code Generation:
@@ -65,17 +65,12 @@ The script first uses the `dbgen` tool to generate csv files, then reads and con
 ### Code Generation & Compilation:
 ```bash
 make p2c   # Build the query compiler and sample query in p2c.cpp#main
-make query # Compile generated query code
-make       # Does all of the above 
 ```
 
 ### Execution:
 ```bash
-# Run with default data location
-./query
-
-# Specify data path and run count
-./query data-generator/output 3
+# Run  (will generate, compile, dynamically load and execute the query)
+./p2c
 ```
 
 The current implementation includes a sample query equivalent to TPC-H query 5.

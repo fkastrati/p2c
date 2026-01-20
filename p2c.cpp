@@ -56,12 +56,12 @@ typedef void (*query_func_t)(const TPCH&);
 
 void dynamically_load_link(const std::string& db_path, const std::string& query_filename) {
 
-   // We use -O3 for performance and -shared -fPIC for dynamic loading
+   // We use -shared -fPIC for dynamic loading
    // Derive the .so filename (e.g., "query1.cpp" -> "query1.so")
     std::filesystem::path p(query_filename);
     std::string soFilename = p.replace_extension(".so").string();
 
-    // 2. Construct the command string dynamically
+    // Construct the command string dynamically
     std::string command = std::format(
         "g++ -std=c++23 -O3 -shared -fPIC {} -o {}", 
         query_filename, 
@@ -81,7 +81,7 @@ void dynamically_load_link(const std::string& db_path, const std::string& query_
    }
 
 
-   // 5. Locate the Function
+   // Locate the Function
    auto execute_query = (query_func_t)dlsym(handle, "execute_query");
    if (!execute_query) {
       std::cerr << "Cannot find symbol: " << dlerror() << "\n";
