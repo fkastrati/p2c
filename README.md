@@ -13,7 +13,6 @@ Thread model: posix
 ```
 ## Changes from Upstream
 - Fixed build issues with Apple Clang
-- Updated Make configuration for macOS
 - Portability fixes
 - Large code restructuring and refactoring in order to allow for better readability and code extension
 - Added Print operator: The query logic is now entirely contained within the operator tree.
@@ -27,6 +26,7 @@ The generated code is nicely formatted and can be inspected in `gen.cpp`.
 
 Components:
 - **`p2c.cpp`** - Main query compiler that generates C++ code from operator trees
+- **`operator.hpp`** - Query operators and expression types
 - **`types.hpp`** - Type system supporting integers, doubles, strings, dates
 - **`tpch.hpp`** - TPC-H schema definitions and database autoloading
 - **`io.hpp`** - Memory-mapped I/O with columnar data access
