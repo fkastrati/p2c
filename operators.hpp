@@ -202,7 +202,7 @@ struct ConstExp : public Exp {
    // constructor
    ConstExp(T x) : x(x) {};
    // destructor
-   ~ConstExp() {}
+   ~ConstExp() = default;
 
    std::string compile() override {
       if constexpr (type_tag<T>::tag == Type::String) {
