@@ -52,30 +52,40 @@ void produceAndPrint(std::ofstream& of, int level, std::unique_ptr<Operator> roo
    });
 }
 
+void printHeader(std::ofstream& of) {
+   std::print(of,
+              "#include <iostream>\n"
+              "#include <vector>\n"
+              "#include <unordered_map>\n"
+              "#include <tuple>\n"
+              "#include <algorithm>\n"
+              "#include \"types.hpp\"\n"
+              "#include \"tpch.hpp\"\n\n"
+              "extern \"C\" void execute_query(const systemJTX::TPCH& db) {{\n");
+}
+
 typedef void (*query_func_t)(const TPCH&);
 
 void dynamically_load_link(const std::string& db_path, const std::string& query_filename) {
-
-   // We use -shared -fPIC for dynamic loading
+   // -shared -fPIC for dynamic loading
    // Derive the .so filename (e.g., "query1.cpp" -> "query1.so")
-    std::filesystem::path p(query_filename);
-    std::string soFilename = p.replace_extension(".so").string();
+   std::filesystem::path p(query_filename);
+   std::string soFilename = p.replace_extension(".so").string();
 
-    // Construct the command string dynamically
-    std::string command = std::format(
-        "g++ -std=c++23 -O3 -shared -fPIC {} -o {}", 
-        query_filename, 
-        soFilename
-    );
+   // Construct the command string dynamically
+   std::string command = std::format(
+       "g++ -std=c++23 -O3 -shared -fPIC {} -o {}",
+       query_filename,
+       soFilename);
 
-    auto start = std::chrono::high_resolution_clock::now();
-    // Execute the compilation command
-    int status = std::system(command.c_str());
-    auto end = std::chrono::high_resolution_clock::now();
+   auto start = std::chrono::high_resolution_clock::now();
+   // Execute the compilation command
+   int status = std::system(command.c_str());
+   auto end = std::chrono::high_resolution_clock::now();
 
    if (status != 0) {
-        throw std::runtime_error(std::format("Compilation of {} failed", query_filename));
-    }
+      throw std::runtime_error(std::format("Compilation of {} failed", query_filename));
+   }
 
    // Dynamically Load the Library
    void* handle = dlopen(soFilename.c_str(), RTLD_NOW);
@@ -93,9 +103,10 @@ void dynamically_load_link(const std::string& db_path, const std::string& query_
       dlclose(handle);
    }
 
-
    TPCH db(db_path);
+   std::cout << "--- Query ---" << std::endl;
    execute_query(db);
+   std::cout << "--- End Query ---" << std::endl;
 
    dlclose(handle);
 }
@@ -105,16 +116,7 @@ void simple_test_query(const std::string& filename) {
    if (!outFile)
       throw std::runtime_error("Could not open file");
 
-   // Efficiently write headers and the function wrapper
-   std::print(outFile,
-              "#include <iostream>\n"
-              "#include <vector>\n"
-              "#include <unordered_map>\n"
-              "#include <tuple>\n"
-              "#include <algorithm>\n"
-              "#include \"types.hpp\"\n"
-              "#include \"tpch.hpp\"\n\n"
-              "extern \"C\" void execute_query(const systemJTX::TPCH& db) {{\n");
+   printHeader(outFile);
 
    auto scan = std::make_unique<Scan>("part");
    IU* p_partkey = scan->getIU("p_partkey");
@@ -133,11 +135,17 @@ void simple_test_query(const std::string& filename) {
 
    unsigned perfRepeat = 2;  // adjust as needed
    int ident_level = 1;
-   genBlock(outFile, ident_level, std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
-      // Run the pipeline
-      // The consumer lambda is empty because Print handles the output
-      print->produce(outFile, ident_level, IUSet{}, []() {});
-   });
+   {
+      auto start = std::chrono::high_resolution_clock::now();
+      genBlock(outFile, ident_level, std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
+         // Run the pipeline
+         // The consumer lambda is empty because Print handles the output
+         print->produce(outFile, ident_level, IUSet{}, []() {});
+      });
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::micro> duration = end - start;
+      std::cout << std::format("Code gen finished in {:.2f} us", duration.count()) << std::endl;
+   }
 
    std::print(outFile, "}}\n");
 }
