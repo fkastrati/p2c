@@ -25,7 +25,7 @@ Thread model: posix
 - Dynamic JIT Pipeline:
     External Compilation: Added logic to dynamically invoke g++ with -shared -fPIC to transform generated .cpp files into loadable .so shared objects.
 
-- Runtime Linking: Uses *dlopen* and *dlsym* to load the compiled query function into the running process without requiring a restart.
+- Runtime Linking: Uses *`dlopen`* and *`dlsym`* to load the compiled query function into the running process without requiring a restart.
 
 - Optimized Execution: The generated code is compiled with -O3, allowing the system compiler to optimize the query-specific loops and joins.
 
