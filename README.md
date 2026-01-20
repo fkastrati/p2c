@@ -1,9 +1,7 @@
 # Plan-to-C Query Compiler for MacOS
 
-This repository is a fork of  
-https://github.com/viktorleis/p2c
-
-with number of changes done to the original code.
+This repository is a fork of  https://github.com/viktorleis/p2c
+with substantial changes made to the original code, as shown in the sect. "Changes from Upstream" below.
 
 ## Tested Environment
 ```
@@ -17,6 +15,8 @@ Thread model: posix
 - Large code restructuring and refactoring in order to allow for better readability and code extension
 - Added Print operator: The query logic is now entirely contained within the operator tree.
 - Added Limit operator: introduces the ability to stop execution early. By using goto label, we successfully break out of the deeply nested for loops that HashJoin and Scan generate, which a simple break would not achieve.
+- Operators' interface has been updated such that it allows for efficient double dispatching (i.e., visitor pattern), this way one can traverse the plan tree without having to modify each Operator/Expr;
+- Pretty Plan priting using the newly added visitor pattern
 - High-Efficiency Code Generation:
     Buffered File I/O: Shifted from global std::cout to passing std::ostream& through the operator tree to allow direct, buffered writing to .cpp source files.
 - Modern C++23 std::print: Utilizes `std::print(out, ...)` for faster, locale-independent formatting compared to traditional stream insertion operators.
