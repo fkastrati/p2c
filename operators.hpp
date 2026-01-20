@@ -2,11 +2,13 @@
 #include <algorithm>
 #include <cassert>
 #include <functional>
+#include <iostream>
 #include <memory>
+#include <ostream>
+#include <print>
 #include <source_location>
 #include <string>
 #include <vector>
-#include <iostream>
 
 #include "tpch.hpp"
 #include "types.hpp"
@@ -17,13 +19,13 @@ namespace systemJTX {
 // Forward Declarations
 // -----------------------------------------------------------------------------
 struct Scan;
-struct Selection; 
+struct Selection;
 struct Map;
-struct Sort;      
+struct Sort;
 struct GroupBy;
 struct HashJoin;
-struct Limit;     
-struct Print;     
+struct Limit;
+struct Print;
 
 struct OperatorVisitor {
    virtual ~OperatorVisitor() = default;
@@ -41,6 +43,12 @@ struct IUSet;
 
 // consumer callback function
 typedef std::function<void(void)> ConsumerFn;
+
+// Helper to write indentation spaces
+inline void writeIndent(std::ostream& out, int level) {
+   for (int i = 0; i < level; ++i)
+      out << "   ";
+}
 
 // format generic list of strings with delimiter (helper)
 std::string join(const std::vector<std::string>& strs, const std::string& delim) {
@@ -71,17 +79,21 @@ struct IU {
    }
 };
 
-// provide an IU by generating local variable (helper)
-void provideIU(IU* iu, const std::string& value) {
-   std::print("{} {} = {};\n", tname(iu->type), iu->varname, value);
+// Updated: Efficiently provide IU to a specific stream
+void provideIU(std::ostream& out, int& level, IU* iu, const std::string& value) {
+   writeIndent(out, level);
+   std::print(out, "{} {} = {};\n", tname(iu->type), iu->varname, value);
 }
 
-// generate curly-brace block of C++ code (helper)
 template<class Fn>
-void genBlock(const std::string& str, Fn fn, const std::source_location& location = std::source_location::current()) {
-   std::cout << str << "{ //" << location.line() << "; " << location.function_name() << std::endl;
+void genBlock(std::ostream& out, int& level, const std::string& str, Fn fn, const std::source_location& location = std::source_location::current()) {
+   writeIndent(out, level);
+   std::print(out, "{}{{ // line {}; {}\n", str, location.line(), location.function_name());
+   level++;  // Increase indent for children
    fn();
-   std::cout << "}" << std::endl;
+   level--;  // Restore indent
+   writeIndent(out, level);
+   std::print(out, "}}\n");
 }
 
 // an unordered set of IUs
@@ -251,7 +263,7 @@ struct Operator {
    // compute *all* IUs this operator can produce
    virtual IUSet availableIUs() = 0;
    // generate code for operator providing 'required' IUs and pushing them to 'consume' callback
-   virtual void produce(const IUSet& required, ConsumerFn consume) = 0;
+   virtual void produce(std::ostream& out, int& level, const IUSet& required, ConsumerFn consume) = 0;
    // accept visitor
    virtual void accept(OperatorVisitor& v) = 0;
 };
@@ -275,9 +287,6 @@ struct Scan : public Operator {
          attributes.emplace_back(IU{att.first, att.second});
    }
 
-   // destructor
-   ~Scan() {}
-
    IUSet availableIUs() override {
       IUSet result;
       for (auto& iu : attributes)
@@ -285,10 +294,10 @@ struct Scan : public Operator {
       return result;
    }
 
-   void produce(const IUSet& required, ConsumerFn consume) override {
-      genBlock(std::format("for (uint64_t i = 0; i != db.{}.tupleCount; i++)", relName), [&]() {
+   void produce(std::ostream& out, int& level, const IUSet& required, ConsumerFn consume) override {
+      genBlock(out, level, std::format("for (uint64_t i = 0; i != db.{}.tupleCount; i++)", relName), [&]() {
          for (IU* iu : required)
-            provideIU(iu, std::format("db.{}.{}[i]", relName, iu->name));
+            provideIU(out, level, iu, std::format("db.{}.{}[i]", relName, iu->name));
          consume();
       });
    }
@@ -310,14 +319,11 @@ struct Selection : public Operator {
 
    // constructor
    Selection(std::unique_ptr<Operator> input, std::unique_ptr<Exp> predicate) : input(std::move(input)), pred(std::move(predicate)) {}
-   // destructor
-   ~Selection() {}
-
    IUSet availableIUs() override { return input->availableIUs(); }
 
-   void produce(const IUSet& required, ConsumerFn consume) override {
-      input->produce(required | pred->iusUsed(), [&]() {
-         genBlock(std::format("if ({})", pred->compile()), [&]() {
+   void produce(std::ostream& out, int& level, const IUSet& required, ConsumerFn consume) override {
+      input->produce(out, level, required | pred->iusUsed(), [&]() {
+         genBlock(out, level, std::format("if ({})", pred->compile()), [&]() {
             consume();
          });
       });
@@ -341,10 +347,10 @@ struct Map : public Operator {
 
    IUSet availableIUs() override { return input->availableIUs() | IUSet({&iu}); }
 
-   void produce(const IUSet& required, ConsumerFn consume) override {
-      input->produce((required | exp->iusUsed()) - IUSet({&iu}), [&]() {
-         genBlock("", [&]() {
-            provideIU(&iu, exp->compile());
+   void produce(std::ostream& out, int& level, const IUSet& required, ConsumerFn consume) override {
+      input->produce(out, level, (required | exp->iusUsed()) - IUSet({&iu}), [&]() {
+         genBlock(out, level, "", [&]() {
+            provideIU(out, level, &iu, exp->compile());
             consume();
          });
       });
@@ -367,48 +373,41 @@ struct Sort : public Operator {
    IU v{"vector", Type::Undefined};
    IU cmp{"custom_cmp", Type::Undefined};
 
-   // constructor
-   Sort(std::unique_ptr<Operator> input, const std::vector<IU*>& keyIUs, const std::vector<bool> ascending) : input(std::move(input)), keyIUs(keyIUs), ascending(ascending) {}
-
-   // destructor
-   ~Sort() {}
+   Sort(std::unique_ptr<Operator> input, const std::vector<IU*>& keyIUs, const std::vector<bool> ascending)
+       : input(std::move(input)), keyIUs(keyIUs), ascending(ascending) {}
 
    IUSet availableIUs() override { return input->availableIUs(); }
 
-   void produce(const IUSet& required, ConsumerFn consume) override {
+   void produce(std::ostream& out, int& level, const IUSet& required, ConsumerFn consume) override {
       // compute IUs
       IUSet restIUs = required - IUSet(keyIUs);
       std::vector<IU*> allIUs = keyIUs;
       allIUs.insert(allIUs.end(), restIUs.v.begin(), restIUs.v.end());
 
       // define custom comparator
-      genBlock("struct", [&]() {
-         genBlock(std::format("bool operator()(const tuple<{0}>& lhs, const tuple<{0}>& rhs) const",
-                              formatTypes(allIUs)),
+      genBlock(out, level, "struct", [&]() {
+         genBlock(out, level, std::format("bool operator()(const tuple<{0}>& lhs, const tuple<{0}>& rhs) const", formatTypes(allIUs)),
                   [&]() {
             for (size_t i = 0; i != keyIUs.size(); i++) {
-               std::print("if (get<{0}>(lhs) != get<{0}>(rhs)) return get<{0}>(lhs) {1} get<{0}>(rhs);\n", i,
+               std::print(out, "if (get<{0}>(lhs) != get<{0}>(rhs)) return get<{0}>(lhs) {1} get<{0}>(rhs);\n", i,
                           ascending[i] ? "<" : ">");
             }
-            std::print("return false;\n");
+            std::print(out, "return false;\n");
          });
       });
-      std::print("{};\n", cmp.varname);
+      std::print(out, "{};\n", cmp.varname);
 
-      // collect tuples
-      std::print("vector<tuple<{}>> {};\n", formatTypes(allIUs), v.varname);
-      input->produce(IUSet(allIUs), [&]() {
-         std::print("{}.push_back({{{}}});\n", v.varname, formatVarnames(allIUs));
+      std::print(out, "vector<tuple<{}>> {};\n", formatTypes(allIUs), v.varname);
+      input->produce(out, level, IUSet(allIUs), [&]() {
+         std::print(out, "{}.push_back({{{}}});\n", v.varname, formatVarnames(allIUs));
       });
 
-      // sort
-      std::print("sort({0}.begin(), {0}.end(), {1});\n", v.varname, cmp.varname);
+      std::print(out, "sort({0}.begin(), {0}.end(), {1});\n", v.varname, cmp.varname);
 
-      // iterate
-      genBlock(std::format("for (auto& t : {})", v.varname), [&]() {
+      genBlock(out, level, std::format("for (auto& t : {})", v.varname), [&]() {
          for (unsigned i = 0; i < allIUs.size(); i++)
             if (required.contains(allIUs[i]))
-               provideIU(allIUs[i], std::format("get<{}>(t)", i));
+               provideIU(out, level, allIUs[i], std::format("get<{}>(t)", i));
          consume();
       });
    };
@@ -428,7 +427,6 @@ struct Aggregate {
 
    virtual std::string genInitValue() = 0;
    virtual std::string genUpdate(std::string oldValueRef) = 0;
-
 };
 
 struct CountAggregate final : Aggregate {
@@ -489,38 +487,38 @@ struct GroupBy : public Operator {
 
    IUSet availableIUs() override { return groupKeyIUs | IUSet(resultIUs()); }
 
-   void produce(const IUSet& required, ConsumerFn consume) override {
+   void produce(std::ostream& out, int& level, const IUSet& required, ConsumerFn consume) override {
       // build hash table
-      std::print("unordered_map<tuple<{}>, tuple<{}>> {};\n", formatTypes(groupKeyIUs.v), formatTypes(resultIUs()), ht.varname);
-      input->produce(groupKeyIUs | inputIUs(), [&]() {
+      std::print(out, "unordered_map<tuple<{}>, tuple<{}>> {};\n", formatTypes(groupKeyIUs.v), formatTypes(resultIUs()), ht.varname);
+      input->produce(out, level, groupKeyIUs | inputIUs(), [&]() {
          // insert tuple into hash table
-         std::print("auto it = {}.find({{{}}});\n", ht.varname, formatVarnames(groupKeyIUs.v));
-         genBlock(format("if (it == {}.end())", ht.varname), [&]() {
+         std::print(out, "auto it = {}.find({{{}}});\n", ht.varname, formatVarnames(groupKeyIUs.v));
+         genBlock(out, level, format("if (it == {}.end())", ht.varname), [&]() {
             std::vector<std::string> initValues;
             for (auto& agg : aggs)
                initValues.push_back(agg->genInitValue());
             // insert new group
-            std::print("{}.insert({{{{{}}}, {{{}}}}});\n", ht.varname, formatVarnames(groupKeyIUs.v), join(initValues, ","));
+            std::print(out, "{}.insert({{{{{}}}, {{{}}}}});\n", ht.varname, formatVarnames(groupKeyIUs.v), join(initValues, ","));
          });
-         genBlock("else", [&]() {
+         genBlock(out, level, "else", [&]() {
             // update group
             unsigned i = 0;
             for (auto& agg : aggs) {
-               std::print("{};\n", agg->genUpdate(std::format("get<{}>(it->second)", i++)));
+               std::print(out, "{};\n", agg->genUpdate(std::format("get<{}>(it->second)", i++)));
             }
          });
       });
 
       // iterate over hash table
-      genBlock(format("for (auto& it : {})", ht.varname), [&]() {
+      genBlock(out, level, format("for (auto& it : {})", ht.varname), [&]() {
          for (unsigned i = 0; i < groupKeyIUs.size(); i++) {
             IU* iu = groupKeyIUs.v[i];
             if (required.contains(iu))
-               provideIU(iu, std::format("get<{}>(it.first)", i));
+               provideIU(out, level, iu, std::format("get<{}>(it.first)", i));
          }
          unsigned i = 0;
          for (auto& agg : aggs) {
-            provideIU(&agg->resultIU, std::format("get<{}>(it.second)", i));
+            provideIU(out, level, &agg->resultIU, std::format("get<{}>(it.second)", i));
             i++;
          }
          consume();
@@ -539,9 +537,7 @@ struct GroupBy : public Operator {
 
 // hash join operator
 struct HashJoin : public Operator {
-   std::unique_ptr<Operator> left;
-   std::unique_ptr<Operator> right;
-   // join keys from both inputs, example: left=[a, b] right=[c, d] a=c AND b=d
+   std::unique_ptr<Operator> left, right;
    std::vector<IU*> leftKeyIUs, rightKeyIUs;
    // variable name for hash table
    IU ht{"joinHT", Type::Undefined};
@@ -555,32 +551,32 @@ struct HashJoin : public Operator {
 
    IUSet availableIUs() override { return left->availableIUs() | right->availableIUs(); }
 
-   void produce(const IUSet& required, ConsumerFn consume) override {
+   void produce(std::ostream& out, int& level, const IUSet& required, ConsumerFn consume) override {
       // figure out where required IUs come from
       IUSet leftRequiredIUs = (required & left->availableIUs()) | IUSet(leftKeyIUs);
       IUSet rightRequiredIUs = (required & right->availableIUs()) | IUSet(rightKeyIUs);
       IUSet leftPayloadIUs = leftRequiredIUs - IUSet(leftKeyIUs);  // these we need to store in hash table as payload
 
       // build hash table
-      std::print("unordered_multimap<tuple<{}>, tuple<{}>> {};\n", formatTypes(leftKeyIUs), formatTypes(leftPayloadIUs.v), ht.varname);
-      left->produce(leftRequiredIUs, [&]() {
+      std::print(out, "unordered_multimap<tuple<{}>, tuple<{}>> {};\n", formatTypes(leftKeyIUs), formatTypes(leftPayloadIUs.v), ht.varname);
+      left->produce(out, level, leftRequiredIUs, [&]() {
          // insert tuple into hash table
-         std::print("{}.insert({{{{{}}}, {{{}}}}});\n", ht.varname, formatVarnames(leftKeyIUs), formatVarnames(leftPayloadIUs.v));
+         std::print(out, "{}.insert({{{{{}}}, {{{}}}}});\n", ht.varname, formatVarnames(leftKeyIUs), formatVarnames(leftPayloadIUs.v));
       });
 
       // probe hash table
-      right->produce(rightRequiredIUs, [&]() {
+      right->produce(out, level, rightRequiredIUs, [&]() {
          // iterate over matches
-         genBlock(format("for (auto range = {}.equal_range({{{}}}); range.first!=range.second; range.first++)", ht.varname, formatVarnames(rightKeyIUs)), [&]() {
+         genBlock(out, level, format("for (auto range = {}.equal_range({{{}}}); range.first!=range.second; range.first++)", ht.varname, formatVarnames(rightKeyIUs)), [&]() {
             // unpack payload
             unsigned countP = 0;
             for (IU* iu : leftPayloadIUs)
-               provideIU(iu, std::format("get<{}>(range.first->second)", countP++));
+               provideIU(out, level, iu, std::format("get<{}>(range.first->second)", countP++));
             // unpack keys if needed
             for (unsigned i = 0; i < leftKeyIUs.size(); i++) {
                IU* iu = leftKeyIUs[i];
                if (required.contains(iu))
-                  provideIU(iu, std::format("get<{}>(range.first->first)", i));
+                  provideIU(out, level, iu, std::format("get<{}>(range.first->first)", i));
             }
             // consume
             consume();
@@ -591,15 +587,13 @@ struct HashJoin : public Operator {
    void accept(OperatorVisitor& v) override { v.visit(*this); }
 };
 
-
 struct Limit : public Operator {
    std::unique_ptr<Operator> input;
    uint64_t limit;
-   std::string limitVar;
-   std::string labelVar;
+   std::string limitVar, labelVar;
 
-   Limit(std::unique_ptr<Operator> input, uint64_t limit) 
-      : input(std::move(input)), limit(limit) {
+   Limit(std::unique_ptr<Operator> input, uint64_t limit)
+       : input(std::move(input)), limit(limit) {
       static unsigned counter = 0;
       limitVar = std::format("limit_cnt_{}", counter);
       labelVar = std::format("limit_end_{}", counter++);
@@ -607,40 +601,42 @@ struct Limit : public Operator {
 
    IUSet availableIUs() override { return input->availableIUs(); }
 
-   void produce(const IUSet& required, ConsumerFn consume) override {
-      std::print("uint64_t {} = 0;\n", limitVar);
-      
-      input->produce(required, [&]() {
-         std::print("if ({}++ >= {}) goto {};\n", limitVar, limit, labelVar);
+   void produce(std::ostream& out, int& level, const IUSet& required, ConsumerFn consume) override {
+      std::print(out, "uint64_t {} = 0;\n", limitVar);
+      input->produce(out, level, required, [&]() {
+         writeIndent(out, level);
+         std::print(out, "if ({}++ >= {}) goto {};\n", limitVar, limit, labelVar);
          consume();
       });
 
       // Label to jump to when limit is reached
-      std::print("{}:;\n", labelVar);
+      std::print(out, "{}:;\n", labelVar);
    }
 
    void accept(OperatorVisitor& v) override { v.visit(*this); }
 };
 
 // print operator is the root operator that outputs the final result (i.e., sink operator)
-struct Print : public Operator { 
+struct Print : public Operator {
    std::unique_ptr<Operator> input;
    std::vector<IU*> iusToPrint;
 
-   Print(std::unique_ptr<Operator> input, std::vector<IU*> ius) 
-      : input(std::move(input)), iusToPrint(ius) {}
+   Print(std::unique_ptr<Operator> input, std::vector<IU*> ius)
+       : input(std::move(input)), iusToPrint(ius) {}
 
    IUSet availableIUs() override { return input->availableIUs(); }
 
-   void produce(const IUSet& required, ConsumerFn consume) override {
+   void produce(std::ostream& out, int& level, const IUSet& required, ConsumerFn consume) override {
       IUSet reqFromChild = required | IUSet(iusToPrint);
 
-      input->produce(reqFromChild, [&]() {
-         for (IU* iu : iusToPrint) { // projection list
-            std::print("std::cout << {} << \" \";", iu->varname);
+      writeIndent(out, level);
+      input->produce(out, level, reqFromChild, [&]() {
+         writeIndent(out, level);
+         for (IU* iu : iusToPrint) {  // projection list
+            std::print(out, "std::cout << {} << \" \";", iu->varname);
          }
-         std::print("std::cout << std::endl;\n");
-         
+         std::print(out, "std::cout << std::endl;\n");
+
          // Call consume in case there is something above us (though Print is usually root)
          consume();
       });
@@ -649,32 +645,31 @@ struct Print : public Operator {
    void accept(OperatorVisitor& v) override { v.visit(*this); }
 };
 
-
 // -----------------------------------------------------------------------------
 // PlanPrinter Visitor: Visualizes the Query Tree
 // -----------------------------------------------------------------------------
-
 
 struct PlanPrinter : public OperatorVisitor {
    int level = 0;
 
    void indent() {
-      for (int i = 0; i < level; ++i) std::cout << "  ";
+      for (int i = 0; i < level; ++i)
+         std::cout << "  ";
    }
 
    void visit(Scan& op) override {
       indent();
       // CORRECTED: Uses 'relName' as defined in operator.hpp
-      std::cout << "- Scan (" << op.relName << ")" << std::endl; 
+      std::cout << "- Scan (" << op.relName << ")" << std::endl;
    }
 
    void visit(Selection& op) override {
       indent();
       // 'pred' is the member name in operator.hpp
       std::cout << "- Selection (filter: " << op.pred->compile() << ")" << std::endl;
-      
+
       level++;
-      op.input->accept(*this); // 'input' is the member name
+      op.input->accept(*this);  // 'input' is the member name
       level--;
    }
 
@@ -682,7 +677,7 @@ struct PlanPrinter : public OperatorVisitor {
       indent();
       // 'iu.name' comes from the IU struct in operator.hpp
       std::cout << "- Map (compute: " << op.iu.name << ")" << std::endl;
-      
+
       level++;
       op.input->accept(*this);
       level--;
@@ -691,7 +686,7 @@ struct PlanPrinter : public OperatorVisitor {
    void visit(Sort& op) override {
       indent();
       std::cout << "- Sort" << std::endl;
-      
+
       level++;
       op.input->accept(*this);
       level--;
@@ -700,7 +695,7 @@ struct PlanPrinter : public OperatorVisitor {
    void visit(GroupBy& op) override {
       indent();
       std::cout << "- GroupBy" << std::endl;
-      
+
       level++;
       op.input->accept(*this);
       level--;
@@ -709,12 +704,14 @@ struct PlanPrinter : public OperatorVisitor {
    void visit(HashJoin& op) override {
       indent();
       std::cout << "- HashJoin" << std::endl;
-      
+
       level++;
-      indent(); std::cout << "Left:" << std::endl;
+      indent();
+      std::cout << "Left:" << std::endl;
       op.left->accept(*this);
-      
-      indent(); std::cout << "Right:" << std::endl;
+
+      indent();
+      std::cout << "Right:" << std::endl;
       op.right->accept(*this);
       level--;
    }
@@ -722,7 +719,7 @@ struct PlanPrinter : public OperatorVisitor {
    void visit(Limit& op) override {
       indent();
       std::cout << "- Limit (" << op.limit << ")" << std::endl;
-      
+
       level++;
       op.input->accept(*this);
       level--;
@@ -731,7 +728,7 @@ struct PlanPrinter : public OperatorVisitor {
    void visit(Print& op) override {
       indent();
       std::cout << "- Print" << std::endl;
-      
+
       level++;
       op.input->accept(*this);
       level--;

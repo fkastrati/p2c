@@ -1,5 +1,9 @@
 // Viktor Leis, 2023
 
+#include <dlfcn.h>  // For dlopen, dlsym, dlclose
+
+#include <cstdlib>  // For system()
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <sstream>
@@ -16,7 +20,7 @@ using namespace fmt;
 #error "Neither <format> nor libfmt is available. Please install libfmt and link it in your Makefile."
 #endif
 
-#include "operator.hpp"
+#include "operators.hpp"
 
 using namespace systemJTX;
 
@@ -38,19 +42,77 @@ std::unique_ptr<Exp> makeCallExp(const std::string& fn, std::unique_ptr<T>... ar
 }
 
 // Print
-void produceAndPrint(std::unique_ptr<Operator> root, const std::vector<IU*>& ius, unsigned perfRepeat = 2) {
-   genBlock(std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
-      root->produce(IUSet(ius), [&]() {
+void produceAndPrint(std::ofstream& of, int level, std::unique_ptr<Operator> root, const std::vector<IU*>& ius, unsigned perfRepeat = 2) {
+   genBlock(of, level, std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
+      root->produce(of, level, IUSet(ius), [&]() {
          for (IU* iu : ius)
-            std::print("cout << {} << \" \";", iu->varname);
-         std::print("cout << endl;\n");
+            std::print(of, "cout << {} << \" \";", iu->varname);
+         std::print(of, "cout << endl;\n");
       });
    });
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void simple_test_query() {
-   // 1. Scan
+typedef void (*query_func_t)(const TPCH&);
+
+void dynamically_load_link(const std::string& db_path, const std::string& query_filename) {
+
+   // We use -O3 for performance and -shared -fPIC for dynamic loading
+   // Derive the .so filename (e.g., "query1.cpp" -> "query1.so")
+    std::filesystem::path p(query_filename);
+    std::string soFilename = p.replace_extension(".so").string();
+
+    // 2. Construct the command string dynamically
+    std::string command = std::format(
+        "g++ -std=c++23 -O3 -shared -fPIC {} -o {}", 
+        query_filename, 
+        soFilename
+    );
+
+    int status = std::system(command.c_str());
+
+   if (status != 0) {
+        throw std::runtime_error(std::format("Compilation of {} failed", query_filename));
+    }
+
+   // Dynamically Load the Library
+   void* handle = dlopen(soFilename.c_str(), RTLD_NOW);
+   if (!handle) {
+      throw std::runtime_error(std::format("Cannot load library: {} ", soFilename));
+   }
+
+
+   // 5. Locate the Function
+   auto execute_query = (query_func_t)dlsym(handle, "execute_query");
+   if (!execute_query) {
+      std::cerr << "Cannot find symbol: " << dlerror() << "\n";
+      dlclose(handle);
+   }
+
+
+   TPCH db(db_path);
+   std::cout << "Step 3: Executing Query...\n---\n";
+   execute_query(db);
+   std::cout << "---\nQuery Complete.\n";
+
+   dlclose(handle);
+}
+
+void simple_test_query(const std::string& filename) {
+   std::ofstream outFile(filename);
+   if (!outFile)
+      throw std::runtime_error("Could not open file");
+
+   // Efficiently write headers and the function wrapper
+   std::print(outFile,
+              "#include <iostream>\n"
+              "#include <vector>\n"
+              "#include <unordered_map>\n"
+              "#include <tuple>\n"
+              "#include <algorithm>\n"
+              "#include \"types.hpp\"\n"
+              "#include \"tpch.hpp\"\n\n"
+              "extern \"C\" void execute_query(const systemJTX::TPCH& db) {{\n");
+
    auto scan = std::make_unique<Scan>("part");
    IU* p_partkey = scan->getIU("p_partkey");
    IU* p_name = scan->getIU("p_name");
@@ -66,14 +128,15 @@ void simple_test_query() {
    print->accept(printer);
    std::cout << "------------------" << std::endl;
 
-   unsigned perfRepeat = 2; // adjust as needed
-   genBlock(std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
-       // Run the pipeline
-       // The consumer lambda is empty because Print handles the output
-       print->produce(IUSet{}, [](){}); 
+   unsigned perfRepeat = 2;  // adjust as needed
+   int ident_level = 1;
+   genBlock(outFile, ident_level, std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
+      // Run the pipeline
+      // The consumer lambda is empty because Print handles the output
+      print->produce(outFile, ident_level, IUSet{}, []() {});
    });
 
-   // produceAndPrint(std::move(limit), {p_partkey, p_name});
+   std::print(outFile, "}}\n");
 }
 
 void tpch_q5() {
@@ -160,20 +223,19 @@ void tpch_q5() {
 
       auto sort = std::make_unique<Sort>(std::move(gb), std::vector<IU*>{revenue}, std::vector<bool>{false});
 
-
       // DEBUG: Print the tree structure
       // std::cout << "--- Query Plan ---" << std::endl;
       // PlanPrinter printer;
       // sort->accept(printer);
       // std::cout << "\n------------------" << std::endl;
 
-      produceAndPrint(std::move(sort), {n_name, revenue});
-
+      // produceAndPrint(std::move(sort), {n_name, revenue});
    }
 }
 
 int main(int argc, char* argv[]) {
-   tpch_q5();
-   // simple_test_query();
+   // tpch_q5();
+   simple_test_query("q1.cpp");
+   dynamically_load_link("data-generator/output/", "q1.cpp");
    return 0;
 }
