@@ -64,6 +64,10 @@ void printHeader(std::ofstream& of) {
               "extern \"C\" void execute_query(const systemJTX::TPCH& db) {{\n");
 }
 
+void printFooter(std::ofstream& of) {
+   std::print(of, "}}\n");
+}
+
 typedef void (*query_func_t)(const TPCH&);
 
 void dynamically_load_link(const std::string& db_path, const std::string& query_filename) {
@@ -101,11 +105,16 @@ void dynamically_load_link(const std::string& db_path, const std::string& query_
    if (!execute_query) {
       std::cerr << "Cannot find symbol: " << dlerror() << "\n";
       dlclose(handle);
+      return;
    }
 
    TPCH db(db_path);
    std::cout << "--- Query ---" << std::endl;
+   start = std::chrono::high_resolution_clock::now();
    execute_query(db);
+   end = std::chrono::high_resolution_clock::now();
+   duration = end - start;
+   std::cout << std::format("Query ran in {:.2f} ms", duration.count()) << std::endl;
    std::cout << "--- End Query ---" << std::endl;
 
    dlclose(handle);
@@ -147,7 +156,7 @@ void simple_test_query(const std::string& filename) {
       std::cout << std::format("Code gen finished in {:.2f} us", duration.count()) << std::endl;
    }
 
-   std::print(outFile, "}}\n");
+   printFooter(outFile);
 }
 
 void tpch_q5() {
