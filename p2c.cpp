@@ -37,7 +37,6 @@ class QueryLibrary {
    bool keepFiles;
 
 public:
-   // The constructor now handles the full compilation pipeline
    QueryLibrary(const std::string& queryFilename, bool keepFiles = true) 
        : cppPath(queryFilename), keepFiles(keepFiles) {
       
