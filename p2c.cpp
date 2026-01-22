@@ -71,6 +71,11 @@ void printFooter(std::ofstream& of) {
 
 typedef void (*query_func_t)(const TPCH&);
 
+void printPlan(Operator* root) {
+   PlanPrinter printer;
+   root->accept(printer);
+}  
+
 void dynamically_load_link(const std::string& db_path, const std::string& query_filename) {
    // -shared -fPIC for dynamic loading
    // Derive the .so filename (e.g., "query1.cpp" -> "query1.so")
@@ -137,11 +142,7 @@ void simple_test_query(const std::string& filename) {
 
    auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{p_partkey, p_name});
 
-   // DEBUG: Print the tree structure
-   std::cout << "--- Query Plan ---" << std::endl;
-   PlanPrinter printer;
-   print->accept(printer);
-   std::cout << "------------------" << std::endl;
+   printPlan(print.get()); 
 
    unsigned perfRepeat = 2;  // adjust as needed
    int ident_level = 1;
@@ -186,8 +187,9 @@ void test_join_query(const std::string& filename) {
                                           std::vector<IU*>{l_orderkey});
 
    auto limit = std::make_unique<Limit>(std::move(join), 10);
-   auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{l_orderkey, l_quantity});
+   auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{o_orderkey, l_orderkey, l_quantity});
 
+   printPlan(print.get()); 
 
    unsigned perfRepeat = 2;  // adjust as needed
    int ident_level = 1;

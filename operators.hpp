@@ -634,10 +634,11 @@ struct Print : public Operator {
       writeIndent(out, level);
       input->produce(out, level, reqFromChild, [&]() {
          writeIndent(out, level);
+         std::print(out, "std::cout ");
          for (IU* iu : iusToPrint) {  // projection list
-            std::print(out, "std::cout << {} << \" \";", iu->varname);
+            std::print(out, "<< {} << ' ' ", iu->varname); // FIXME: add delimiter instead of ' '
          }
-         std::print(out, "std::cout << std::endl;\n");
+         std::print(out, "<< '\\n';\n");
 
          // Call consume in case there is something above us (though Print is usually root)
          consume();
