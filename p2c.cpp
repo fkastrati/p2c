@@ -23,6 +23,79 @@ using namespace fmt;
 #include "operators.hpp"
 
 using namespace systemJTX;
+#include <dlfcn.h>
+#include <filesystem>
+#include <iostream>
+#include <chrono>
+
+namespace systemJTX {
+
+class QueryLibrary {
+   std::string cppPath;
+   std::string soPath;
+   void* handle = nullptr;
+   bool keepFiles;
+
+public:
+   // The constructor now handles the full compilation pipeline
+   QueryLibrary(const std::string& queryFilename, bool keepFiles = true) 
+       : cppPath(queryFilename), keepFiles(keepFiles) {
+      
+      // Derive .so filename from .cpp path
+      std::filesystem::path p(queryFilename);
+      soPath = p.replace_extension(".so").string();
+
+      // Construct and execute the compilation command
+      std::string command = std::format(
+          "g++ -std=c++23 -O3 -shared -fPIC {} -o {}",
+          cppPath,
+          soPath);
+
+      auto start = std::chrono::high_resolution_clock::now();
+      int status = std::system(command.c_str());
+      auto end = std::chrono::high_resolution_clock::now();
+
+      if (status != 0) {
+         throw std::runtime_error(std::format("Compilation of {} failed", cppPath));
+      }
+
+      std::chrono::duration<double, std::milli> duration = end - start;
+      std::cout << std::format("Compilation finished in {:.2f} ms\n", duration.count());
+
+      // Dynamically Load the Library
+      handle = dlopen(soPath.c_str(), RTLD_NOW);
+      if (!handle) {
+         throw std::runtime_error(std::format("Cannot load library {}: {}", soPath, dlerror()));
+      }
+   }
+
+   ~QueryLibrary() {
+      if (handle) {
+         dlclose(handle);
+      }
+      if (!keepFiles) {
+         std::filesystem::remove(cppPath);
+         std::filesystem::remove(soPath);
+      }
+   }
+
+   // Prevent copies to avoid double dlclose()
+   QueryLibrary(const QueryLibrary&) = delete;
+   QueryLibrary& operator=(const QueryLibrary&) = delete;
+
+   // Locate the function symbol
+   template <typename T>
+   T getFunction(const std::string& name) {
+      T func = reinterpret_cast<T>(dlsym(handle, name.c_str()));
+      if (!func) {
+         throw std::runtime_error(std::format("Symbol {} not found: {}", name, dlerror()));
+      }
+      return func;
+   }
+};
+
+} // namespace systemJTX
+
 
 // create a function call expression (helper)
 template<typename T>
@@ -77,53 +150,22 @@ void printPlan(Operator* root) {
 }  
 
 void dynamically_load_link(const std::string& db_path, const std::string& query_filename) {
-   // -shared -fPIC for dynamic loading
-   // Derive the .so filename (e.g., "query1.cpp" -> "query1.so")
-   std::filesystem::path p(query_filename);
-   std::string soFilename = p.replace_extension(".so").string();
+   try {
+      systemJTX::QueryLibrary queryLib(query_filename);
+      auto execute_query = queryLib.getFunction<query_func_t>("execute_query");
 
-   // Construct the command string dynamically
-   std::string command = std::format(
-       "g++ -std=c++23 -O3 -shared -fPIC {} -o {}",
-       query_filename,
-       soFilename);
+      TPCH db(db_path);
+      std::cout << "--- Query ---" << std::endl;
+      auto start = std::chrono::high_resolution_clock::now();
+      execute_query(db);
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::milli> duration = end - start;
+      std::cout << "--- End Query ---" << std::endl;
+      std::cout << std::format("Query ran in {:.2f} ms", duration.count()) << std::endl;
 
-   auto start = std::chrono::high_resolution_clock::now();
-   // Execute the compilation command
-   int status = std::system(command.c_str());
-   auto end = std::chrono::high_resolution_clock::now();
-
-   if (status != 0) {
-      throw std::runtime_error(std::format("Compilation of {} failed", query_filename));
+   } catch (const std::exception& e) {
+      std::cerr << "Runtime Error: " << e.what() << std::endl;
    }
-
-   // Dynamically Load the Library
-   void* handle = dlopen(soFilename.c_str(), RTLD_NOW);
-   if (!handle) {
-      throw std::runtime_error(std::format("Cannot load library: {} ", soFilename));
-   }
-
-   std::chrono::duration<double, std::milli> duration = end - start;
-   std::cout << std::format("Compilation finished in {:.2f} ms", duration.count()) << std::endl;
-
-   // Locate the Function
-   auto execute_query = (query_func_t)dlsym(handle, "execute_query");
-   if (!execute_query) {
-      std::cerr << "Cannot find symbol: " << dlerror() << "\n";
-      dlclose(handle);
-      return;
-   }
-
-   TPCH db(db_path);
-   std::cout << "--- Query ---" << std::endl;
-   start = std::chrono::high_resolution_clock::now();
-   execute_query(db);
-   end = std::chrono::high_resolution_clock::now();
-   duration = end - start;
-   std::cout << "--- End Query ---" << std::endl;
-   std::cout << std::format("Query ran in {:.2f} ms", duration.count()) << std::endl;
-
-   dlclose(handle);
 }
 
 void simple_test_query(const std::string& filename) {
@@ -206,7 +248,6 @@ void test_join_query(const std::string& filename) {
    }
 
    printFooter(outFile);
-
 }
 
 void tpch_q5() {

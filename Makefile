@@ -10,7 +10,7 @@ p2c: p2c.cpp operators.hpp
 	$(CXX) $(FLAGS) -o p2c p2c.cpp
 
 clean:
-	rm -f p2c query gen.cpp
+	rm -f p2c query gen.cpp *.so
 
 format:
 	clang-format -i *.hpp *.cpp data-generator/*.hpp data-generator/*.cpp
