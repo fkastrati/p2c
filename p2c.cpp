@@ -61,7 +61,8 @@ void printHeader(std::ofstream& of) {
               "#include <algorithm>\n"
               "#include \"types.hpp\"\n"
               "#include \"tpch.hpp\"\n\n"
-              "extern \"C\" void execute_query(const systemJTX::TPCH& db) {{\n");
+              "extern \"C\" void execute_query(const systemJTX::TPCH& db) {{\n"
+              "using namespace std;\n\n");
 }
 
 void printFooter(std::ofstream& of) {
@@ -114,8 +115,8 @@ void dynamically_load_link(const std::string& db_path, const std::string& query_
    execute_query(db);
    end = std::chrono::high_resolution_clock::now();
    duration = end - start;
-   std::cout << std::format("Query ran in {:.2f} ms", duration.count()) << std::endl;
    std::cout << "--- End Query ---" << std::endl;
+   std::cout << std::format("Query ran in {:.2f} ms", duration.count()) << std::endl;
 
    dlclose(handle);
 }
@@ -123,7 +124,7 @@ void dynamically_load_link(const std::string& db_path, const std::string& query_
 void simple_test_query(const std::string& filename) {
    std::ofstream outFile(filename);
    if (!outFile)
-      throw std::runtime_error("Could not open file");
+      throw std::runtime_error(std::format("Could not open file: {}/n", filename));
 
    printHeader(outFile);
 
@@ -157,6 +158,53 @@ void simple_test_query(const std::string& filename) {
    }
 
    printFooter(outFile);
+}
+
+
+/*
+SELECT l_orderkey, l_quantity
+FROM lineitem JOIN orders ON l_orderkey = o_orderkey
+*/
+void test_join_query(const std::string& filename) {
+   std::ofstream outFile(filename);
+   if (!outFile)
+      throw std::runtime_error(std::format("Could not open file: {}/n", filename));
+  
+   printHeader(outFile);
+
+   auto leftScan = std::make_unique<Scan>("orders");
+   IU* o_orderkey = leftScan->getIU("o_orderkey");
+
+
+   auto rightScan = std::make_unique<Scan>("lineitem");
+   IU* l_orderkey = rightScan->getIU("l_orderkey");
+   IU* l_quantity = rightScan->getIU("l_quantity");
+
+   auto join = std::make_unique<HashJoin>(std::move(leftScan),
+                                          std::move(rightScan),
+                                          std::vector<IU*>{o_orderkey},
+                                          std::vector<IU*>{l_orderkey});
+
+   auto limit = std::make_unique<Limit>(std::move(join), 10);
+   auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{l_orderkey, l_quantity});
+
+
+   unsigned perfRepeat = 2;  // adjust as needed
+   int ident_level = 1;
+   {
+      auto start = std::chrono::high_resolution_clock::now();
+      genBlock(outFile, ident_level, std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
+         // Run the pipeline
+         // The consumer lambda is empty because Print handles the output
+         print->produce(outFile, ident_level, IUSet{}, []() {});
+      });
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::micro> duration = end - start;
+      std::cout << std::format("Code gen finished in {:.2f} us", duration.count()) << std::endl;
+   }
+
+   printFooter(outFile);
+
 }
 
 void tpch_q5() {
@@ -257,5 +305,9 @@ int main(int argc, char* argv[]) {
    // tpch_q5();
    simple_test_query("q1.cpp");
    dynamically_load_link("data-generator/output/", "q1.cpp");
+
+   test_join_query("q_join.cpp");
+   dynamically_load_link("data-generator/output/", "q_join.cpp");
+
    return 0;
 }

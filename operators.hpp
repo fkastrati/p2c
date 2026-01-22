@@ -558,9 +558,11 @@ struct HashJoin : public Operator {
       IUSet leftPayloadIUs = leftRequiredIUs - IUSet(leftKeyIUs);  // these we need to store in hash table as payload
 
       // build hash table
+      writeIndent(out, level);
       std::print(out, "unordered_multimap<tuple<{}>, tuple<{}>> {};\n", formatTypes(leftKeyIUs), formatTypes(leftPayloadIUs.v), ht.varname);
       left->produce(out, level, leftRequiredIUs, [&]() {
          // insert tuple into hash table
+         writeIndent(out, level);
          std::print(out, "{}.insert({{{{{}}}, {{{}}}}});\n", ht.varname, formatVarnames(leftKeyIUs), formatVarnames(leftPayloadIUs.v));
       });
 
