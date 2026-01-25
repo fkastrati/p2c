@@ -1,8 +1,10 @@
-// Viktor Leis, 2023
+// Fisnik Kastrati, 2026
 
 #include <dlfcn.h>  // For dlopen, dlsym, dlclose
 
+#include <chrono>
 #include <cstdlib>  // For system()
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -10,25 +12,9 @@
 #include <string_view>
 #include <unordered_map>
 
-#if __has_include(<format>)
-#include <format>
-#include <print>
-#elif __has_include(<fmt/core.h>)
-#include <fmt/core.h>
-using namespace fmt;
-#else
-#error "Neither <format> nor libfmt is available. Please install libfmt and link it in your Makefile."
-#endif
-
-// #include "operators.hpp"
-#include "operators_y.hpp"
+#include "operators.hpp"
 
 using namespace systemJTX;
-#include <dlfcn.h>
-
-#include <chrono>
-#include <filesystem>
-#include <iostream>
 
 namespace systemJTX {
 
@@ -47,7 +33,7 @@ public:
 
       // Construct and execute the compilation command
       std::string command = std::format(
-          "g++ -std=c++23 -O0 -shared -fPIC {} -o {}",
+          "g++ -std=c++23 -O3 -shared -fPIC {} -o {}",
           cppPath,
           soPath);
 
@@ -96,7 +82,10 @@ public:
 
 }  // namespace systemJTX
 
-// create a function call expression (helper)
+// -----------------------------------------------------------------------------
+// Expression Helpers
+// -----------------------------------------------------------------------------
+
 template<typename T>
 requires is_p2c_type<T>
 std::unique_ptr<Exp> makeCallExp(const std::string& fn, IU* iu, const T& x) {
@@ -113,16 +102,9 @@ std::unique_ptr<Exp> makeCallExp(const std::string& fn, std::unique_ptr<T>... ar
    return std::make_unique<FnExp>(fn, std::move(v));
 }
 
-// Print
-void produceAndPrint(std::ofstream& of, int level, std::unique_ptr<Operator> root, const std::vector<IU*>& ius, unsigned perfRepeat = 2) {
-   genBlock(of, level, std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
-      root->produce(of, level, IUSet(ius), [&]() {
-         for (IU* iu : ius)
-            std::print(of, "cout << {} << \" \";", iu->varname);
-         std::print(of, "cout << endl;\n");
-      });
-   });
-}
+// -----------------------------------------------------------------------------
+// Codegen Helpers
+// -----------------------------------------------------------------------------
 
 void printHeader(std::ofstream& of) {
    std::print(of,
@@ -168,10 +150,14 @@ void dynamically_load_link(const std::string& db_path, const std::string& query_
    }
 }
 
+// -----------------------------------------------------------------------------
+// Queries
+// -----------------------------------------------------------------------------
+
 void simple_test_query(const std::string& filename) {
    std::ofstream outFile(filename);
    if (!outFile)
-      throw std::runtime_error(std::format("Could not open file: {}/n", filename));
+      throw std::runtime_error(std::format("Could not open file: {}", filename));
 
    printHeader(outFile);
 
@@ -179,21 +165,17 @@ void simple_test_query(const std::string& filename) {
    IU* p_partkey = scan->getIU("p_partkey");
    IU* p_name = scan->getIU("p_name");
 
-   // add the `limit' clause so that we do not print the entire table
    auto limit = std::make_unique<Limit>(std::move(scan), 10);
-
    auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{p_partkey, p_name});
 
    printPlan(print.get());
 
-   unsigned perfRepeat = 2;  // adjust as needed
-   int ident_level = 1;
+   CodeWriter w(outFile, 1);
+   unsigned perfRepeat = 2;
    {
       auto start = std::chrono::high_resolution_clock::now();
-      genBlock(outFile, ident_level, std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
-         // Run the pipeline
-         // The consumer lambda is empty because Print handles the output
-         print->produce(outFile, ident_level, IUSet{}, []() {});
+      w.block(std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
+         print->produce(w, IUSet{}, []() {});
       });
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double, std::micro> duration = end - start;
@@ -204,13 +186,13 @@ void simple_test_query(const std::string& filename) {
 }
 
 /*
-SELECT l_orderkey, l_quantity
-FROM lineitem JOIN orders ON l_orderkey = o_orderkey
+   SELECT l_orderkey, l_quantity
+   FROM lineitem JOIN orders ON l_orderkey = o_orderkey
 */
 void test_join_query(const std::string& filename) {
    std::ofstream outFile(filename);
    if (!outFile)
-      throw std::runtime_error(std::format("Could not open file: {}/n", filename));
+      throw std::runtime_error(std::format("Could not open file: {}", filename));
 
    printHeader(outFile);
 
@@ -227,18 +209,16 @@ void test_join_query(const std::string& filename) {
                                           std::vector<IU*>{l_orderkey});
 
    auto limit = std::make_unique<Limit>(std::move(join), 10);
-   auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{o_orderkey, l_orderkey, l_quantity});
+   auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{l_orderkey, l_quantity});
 
    printPlan(print.get());
 
-   unsigned perfRepeat = 2;  // adjust as needed
-   int ident_level = 1;
+   CodeWriter w(outFile, 1);
+   unsigned perfRepeat = 2;
    {
       auto start = std::chrono::high_resolution_clock::now();
-      genBlock(outFile, ident_level, std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
-         // Run the pipeline
-         // The consumer lambda is empty because Print handles the output
-         print->produce(outFile, ident_level, IUSet{}, []() {});
+      w.block(std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
+         print->produce(w, IUSet{}, []() {});
       });
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double, std::micro> duration = end - start;
@@ -249,52 +229,17 @@ void test_join_query(const std::string& filename) {
 }
 
 void tpch_q5(const std::string& filename) {
-   // ------------------------------------------------------------
-   // TPC-H Query 5; should return the following on sf1 according to umbra:
-   // INDONESIA 55502041.1697
-   // VIETNAM 55295086.9967
-   // CHINA 53724494.2566
-   // INDIA 52035512.0002
-   // JAPAN 45410175.6954
-   // ------------------------------------------------------------
-   // select
-   //       n_name,
-   //       sum(l_extendedprice * (1 - l_discount)) as revenue
-   // from
-   //       customer,
-   //       orders,
-   //       lineitem,
-   //       supplier,
-   //       nation,
-   //       region
-   // where
-   //       c_custkey = o_custkey
-   //       and l_orderkey = o_orderkey
-   //       and l_suppkey = s_suppkey
-   //       and c_nationkey = s_nationkey
-   //       and s_nationkey = n_nationkey
-   //       and n_regionkey = r_regionkey
-   //       and r_name = 'ASIA'
-   //       and o_orderdate >= date '1994-01-01'
-   //       and o_orderdate < date '1994-01-01' + interval '1' year
-   // group by
-   //       n_name
-   // order by
-   //       revenue desc
-   // ------------------------------------------------------------
-
    std::ofstream outFile(filename);
    if (!outFile)
-      throw std::runtime_error(std::format("Could not open file: {}/n", filename));
+      throw std::runtime_error(std::format("Could not open file: {}", filename));
 
    printHeader(outFile);
 
+   // Region & Nation Join
    auto r = std::make_unique<Scan>("region");
    IU* r_regionkey = r->getIU("r_regionkey");
    IU* r_name = r->getIU("r_name");
-   auto r_sel =
-       std::make_unique<Selection>(std::move(r), makeCallExp("std::equal_to()", std::make_unique<IUExp>(r_name),
-                                                             std::make_unique<ConstExp<std::string_view>>("ASIA")));
+   auto r_sel = std::make_unique<Selection>(std::move(r), makeCallExp("std::equal_to()", std::make_unique<IUExp>(r_name), std::make_unique<ConstExp<std::string_view>>("ASIA")));
 
    auto n = std::make_unique<Scan>("nation");
    IU* n_nationkey = n->getIU("n_nationkey");
@@ -302,11 +247,13 @@ void tpch_q5(const std::string& filename) {
    IU* n_name = n->getIU("n_name");
    auto join1 = std::make_unique<HashJoin>(std::move(r_sel), std::move(n), std::vector<IU*>{r_regionkey}, std::vector<IU*>{n_regionkey});
 
+   // Customer Join
    auto c = std::make_unique<Scan>("customer");
    IU* c_custkey = c->getIU("c_custkey");
    IU* c_nationkey = c->getIU("c_nationkey");
    auto join2 = std::make_unique<HashJoin>(std::move(join1), std::move(c), std::vector<IU*>{n_nationkey}, std::vector<IU*>{c_nationkey});
 
+   // Orders Join (with date filters)
    auto o = std::make_unique<Scan>("orders");
    auto o_orderkey = o->getIU("o_orderkey");
    auto o_custkey = o->getIU("o_custkey");
@@ -316,6 +263,7 @@ void tpch_q5(const std::string& filename) {
    auto o_sel = std::make_unique<Selection>(std::move(o), makeCallExp("std::logical_and()", std::move(lowerBoundExp), std::move(upperBoundExp)));
    auto join3 = std::make_unique<HashJoin>(std::move(join2), std::move(o_sel), std::vector<IU*>{c_custkey}, std::vector<IU*>{o_custkey});
 
+   // Lineitem Join
    auto l = std::make_unique<Scan>("lineitem");
    auto l_orderkey = l->getIU("l_orderkey");
    auto l_suppkey = l->getIU("l_suppkey");
@@ -323,37 +271,34 @@ void tpch_q5(const std::string& filename) {
    auto l_discount = l->getIU("l_discount");
    auto join4 = std::make_unique<HashJoin>(std::move(join3), std::move(l), std::vector<IU*>{o_orderkey}, std::vector<IU*>{l_orderkey});
 
+   // Supplier Join
    auto s = std::make_unique<Scan>("supplier");
    auto s_suppkey = s->getIU("s_suppkey");
    auto s_nationkey = s->getIU("s_nationkey");
    auto join5 = std::make_unique<HashJoin>(std::move(s), std::move(join4), std::vector<IU*>{s_suppkey, s_nationkey}, std::vector<IU*>{l_suppkey, n_nationkey});
 
+   // Projection: revenue = l_extendedprice * (1 - l_discount)
    auto discountPriceExp = makeCallExp("std::multiplies()", std::make_unique<IUExp>(l_extendedprice), makeCallExp("std::minus()", std::make_unique<ConstExp<double>>(1.0), std::make_unique<IUExp>(l_discount)));
    auto discountPriceMap = std::make_unique<Map>(std::move(join5), std::move(discountPriceExp), "revenue", Type::Double);
    auto discountPrice = discountPriceMap->getIU("revenue");
 
+   // Group By & Aggregate
    auto gb = std::make_unique<GroupBy>(std::move(discountPriceMap), IUSet({n_name}));
    gb->addAggregate(std::make_unique<SumAggregate>("revenue", discountPrice));
    auto revenue = gb->getIU("revenue");
 
+   // Sort & Output
    auto sort = std::make_unique<Sort>(std::move(gb), std::vector<IU*>{revenue}, std::vector<bool>{false});
+   auto print = std::make_unique<Print>(std::move(sort), std::vector<IU*>{n_name, revenue});
 
-   // DEBUG: Print the tree structure
-   // std::cout << "--- Query Plan ---" << std::endl;
-   // PlanPrinter printer;
-   // sort->accept(printer);
-   // std::cout << "\n------------------" << std::endl;
+   printPlan(print.get());
 
-   printPlan(sort.get());
-
-   unsigned perfRepeat = 2;  // adjust as needed
-   int ident_level = 1;
+   CodeWriter w(outFile, 1);
+   unsigned perfRepeat = 2;
    {
       auto start = std::chrono::high_resolution_clock::now();
-      genBlock(outFile, ident_level, std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
-         // Run the pipeline
-         // The consumer lambda is empty because Print handles the output
-         sort->produce(outFile, ident_level, IUSet{}, []() {});
+      w.block(std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
+         print->produce(w, IUSet{}, []() {});
       });
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double, std::micro> duration = end - start;
@@ -363,14 +308,15 @@ void tpch_q5(const std::string& filename) {
 }
 
 int main(int argc, char* argv[]) {
-   // tpch_q5();
+   // tpch_q5("q5.cpp");
+   // dynamically_load_link("data-generator/output/", "q5.cpp");
+
    // simple_test_query("q1.cpp");
    // dynamically_load_link("data-generator/output/", "q1.cpp");
 
-   // test_join_query("q_join.cpp");
-   // dynamically_load_link("data-generator/output/", "q_join.cpp");
 
-   tpch_q5("q5.cpp");
-   dynamically_load_link("data-generator/output/", "q5.cpp");
+   test_join_query("q_join.cpp");
+   dynamically_load_link("data-generator/output/", "q_join.cpp");
+
    return 0;
 }
