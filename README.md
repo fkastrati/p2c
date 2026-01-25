@@ -1,7 +1,7 @@
 # Plan-to-C Query Compiler for MacOS
 
 This repository is a fork of  https://github.com/viktorleis/p2c
-with substantial changes made to the original code, as shown in the sect. "Changes from Upstream" below.
+with substantial changes made to the original code, as shown in the section "Changes from Upstream" below. 
 
 ## Tested Environment
 ```
@@ -24,6 +24,9 @@ Thread model: posix
 - Dynamic JIT Pipeline:
     External Compilation: Added logic to dynamically invoke `g++` with `-shared -fPIC` to transform generated .cpp files into loadable .so shared objects.
 - Runtime Linking: Uses *`dlopen`* and *`dlsym`* to load the compiled query function into the running process without requiring a restart.
+- Introduced `CodeWriter`: A dedicated helper class that encapsulates output streams and indentation state.
+- RAII-style Block Management: Replaced manual brace management with w.block() calls. Using C++ lambdas, the generator now automatically handles opening/closing braces and indentation levels, making the generator logic virtually "leak-proof" regarding formatting.
+- Declarative API: Standardized code emission with *`w.line()`* and *`w.declare()`*, significantly reducing boilerplate and "noise" in operator implementations.
 
 ## P2C: Plan-to-C Query Compiler
 

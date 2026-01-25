@@ -1,18 +1,17 @@
 CXX ?= g++
-FLAGS := -std=c++23 -g -Wall -O0 # on old compilers: -lfmt
-
-# (1) run p2c to generate query code, format the generated code if clang-format exists
-# (2) compile generated code
+#FLAGS := -std=c++23 -g -Wall -O0 -ldl 
+FLAGS := -std=c++23 -g -Wall -O3 -march=native -ldl 
 
 
-# compile the query compiler p2c
-p2c: p2c.cpp operators.hpp
-	$(CXX) $(FLAGS) -o p2c p2c.cpp
+all: jit_compiler 
+
+jit_compiler: jit_compiler.cpp operators.hpp
+	$(CXX) $(FLAGS) -o jit_compiler jit_compiler.cpp
 
 clean:
-	rm -f p2c query gen.cpp *.so
+	rm -f jit_compiler query gen.cpp *.so *.gch q1.cpp q_join.cpp
 
 format:
 	clang-format -i *.hpp *.cpp data-generator/*.hpp data-generator/*.cpp
 
-.PHONY: clean format
+.PHONY: all clean format
