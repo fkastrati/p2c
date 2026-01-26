@@ -1,4 +1,4 @@
-# Plan-to-C Query Compiler for MacOS
+# Plan-to-C JIT Query Compiler 
 
 This repository is a fork of  https://github.com/viktorleis/p2c
 with substantial changes made to the original code, as shown in the section "Changes from Upstream" below. 
@@ -30,25 +30,21 @@ Thread model: posix
 
 ## P2C: Plan-to-C Query Compiler
 
-p2c is an educational compiling query engine.
-Given an operator tree (query plan), it generates C++ code (hence plan-to-code).
-The generated code is nicely formatted and can be inspected in `gen.cpp`.
+SystemJTX is a JIT compiler:
+given an operator tree (query plan), it generates C++ code (hence plan-to-code).
+The generated code is nicely formatted and can be inspected in the generated `*.cpp`.
 
 Components:
-- **`p2c.cpp`** - Main query compiler that generates C++ code from operator trees
-- **`operator.hpp`** - Query operators and expression types
+- **`jit_compiler.cpp`** - Main query compiler that generates C++ code from operator trees, compiles the code and runs it.
+- **`operators.hpp`** - Query operators and expression types
 - **`types.hpp`** - Type system supporting integers, doubles, strings, dates
 - **`tpch.hpp`** - TPC-H schema definitions and database autoloading
 - **`io.hpp`** - Memory-mapped I/O with columnar data access
-- **`queryFrame.cpp`** - Runtime framework that executes generated code
-- **`operators.hpp`** - Physical operators and expressions
 
 ## Getting Started
 
 You will need:
-- A C++23 compiler (gcc >= 14, clang >= 19)
-- Alternatively: A C++20 compiler *and* [`libfmt`](https://github.com/fmtlib/fmt)
-- Optionally: clang-format to format generated code
+- A C++20/23 compiler (gcc >= 14, clang >= 19)
 
 To run a query, follow these steps:
 1. **Data Generation**: Convert TPC-H CSV data to optimized binary columnar format
@@ -67,13 +63,13 @@ The script first uses the `dbgen` tool to generate csv files, then reads and con
 
 ### Code Generation & Compilation:
 ```bash
-make p2c   # Build the query compiler and sample query in p2c.cpp#main
+make   # Build the query compiler and sample query in p2c.cpp#main
 ```
 
 ### Execution:
 ```bash
 # Run  (will generate, compile, dynamically load and execute the query)
-./p2c
+./jit_compiler
 ```
 
-The current implementation includes a sample query equivalent to TPC-H query 5.
+The current implementation includes sample queriers among them an equivalent to TPC-H Q5.

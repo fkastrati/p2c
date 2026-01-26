@@ -481,9 +481,8 @@ struct Limit : public Operator {
    std::string limitVar, labelVar;
 
    Limit(std::unique_ptr<Operator> in, uint64_t l) : input(std::move(in)), limit(l) {
-      static unsigned counter = 0;
-      limitVar = std::format("limit_cnt_{}", counter);
-      labelVar = std::format("limit_end_{}", counter++);
+      limitVar = IU::genVar("limit_cnt_");
+      labelVar = IU::genVar("limit_end_");
    }
 
    IUSet availableIUs() override { return input->availableIUs(); }
