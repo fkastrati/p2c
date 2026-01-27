@@ -208,7 +208,7 @@ void test_join_query(const std::string& filename) {
                                           std::vector<IU*>{l_orderkey});
 
    auto exp = makeCallExp("std::multiplies()", std::make_unique<IUExp>(l_quantity), std::make_unique<ConstExp<int>>(2));
-   auto map = std::make_unique<Map>(std::move(join), std::move(exp), "double_quantity", Type::Integer);
+   auto map = std::make_unique<Map>(std::move(join), std::move(exp), "double_quantity", Type::Double);
    auto double_l_quantity = map->getIU("double_quantity");
    auto limit = std::make_unique<Limit>(std::move(map), 10);
    auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{double_l_quantity});
@@ -230,6 +230,39 @@ void test_join_query(const std::string& filename) {
    printFooter(outFile);
 }
 
+  // ------------------------------------------------------------
+   // TPC-H Query 5; should return the following on sf1 according to umbra:
+   // INDONESIA 55502041.1697
+   // VIETNAM 55295086.9967
+   // CHINA 53724494.2566
+   // INDIA 52035512.0002
+   // JAPAN 45410175.6954
+   // ------------------------------------------------------------
+   // select
+   //       n_name,
+   //       sum(l_extendedprice * (1 - l_discount)) as revenue
+   // from
+   //       customer,
+   //       orders,
+   //       lineitem,
+   //       supplier,
+   //       nation,
+   //       region
+   // where
+   //       c_custkey = o_custkey
+   //       and l_orderkey = o_orderkey
+   //       and l_suppkey = s_suppkey
+   //       and c_nationkey = s_nationkey
+   //       and s_nationkey = n_nationkey
+   //       and n_regionkey = r_regionkey
+   //       and r_name = 'ASIA'
+   //       and o_orderdate >= date '1994-01-01'
+   //       and o_orderdate < date '1994-01-01' + interval '1' year
+   // group by
+   //       n_name
+   // order by
+   //       revenue desc
+   // ------------------------------------------------------------
 void tpch_q5(const std::string& filename) {
    std::ofstream outFile(filename);
    if (!outFile)
@@ -310,14 +343,14 @@ void tpch_q5(const std::string& filename) {
 }
 
 int main(int argc, char* argv[]) {
-   // tpch_q5("q5.cpp");
-   // dynamically_load_link("data-generator/output/", "q5.cpp");
+   tpch_q5("q5.cpp");
+   dynamically_load_link("data-generator/output/", "q5.cpp");
 
    // simple_test_query("q1.cpp");
    // dynamically_load_link("data-generator/output/", "q1.cpp");
 
-   test_join_query("q_join.cpp");
-   dynamically_load_link("data-generator/output/", "q_join.cpp");
+   // test_join_query("q_join.cpp");
+   // dynamically_load_link("data-generator/output/", "q_join.cpp");
 
    return 0;
 }

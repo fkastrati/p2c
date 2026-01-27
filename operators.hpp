@@ -508,10 +508,27 @@ struct Print : public Operator {
    void produce(CodeWriter& w, const IUSet& required, ConsumerFn consume) override {
       input->produce(w, required | IUSet(iusToPrint), [&] {
          w.indent();
-         std::print(w.out, "std::cout ");
-         for (IU* iu : iusToPrint)
-            std::print(w.out, "<< {} << ' ' ", iu->varname);
-         std::print(w.out, "<< '\\n';\n");
+         bool first = true;
+         std::string fmt = "\"";
+         for (IU* iu : iusToPrint) {
+            if (!first)
+               fmt += " ";
+            first = false;
+
+            if (iu->type == Type::Double)
+               fmt += "{:.4f}";
+            else
+               fmt += "{}";
+         }
+         fmt += "\\n\"";
+
+         std::print(w.out, "std::cout << std::format({}, ", fmt);
+         for (size_t i = 0; i < iusToPrint.size(); ++i) {
+            if (i > 0)
+               std::print(w.out, ", ");
+            std::print(w.out, "{}", iusToPrint[i]->varname);
+         }
+         std::print(w.out, ");\n");
          consume();
       });
    }
