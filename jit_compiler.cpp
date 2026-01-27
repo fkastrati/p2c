@@ -153,7 +153,10 @@ void dynamically_load_link(const std::string& db_path, const std::string& query_
 // -----------------------------------------------------------------------------
 // Queries
 // -----------------------------------------------------------------------------
-
+/* 
+   SELECT p_partkey, p_name
+   FROM part LIMIT 10;
+*/
 void simple_test_query(const std::string& filename) {
    std::ofstream outFile(filename);
    if (!outFile)
@@ -168,15 +171,10 @@ void simple_test_query(const std::string& filename) {
    auto limit = std::make_unique<Limit>(std::move(scan), 10);
    auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{p_partkey, p_name});
 
-   printPlan(print.get());
-
    CodeWriter w(outFile, 1);
-   unsigned perfRepeat = 2;
    {
       auto start = std::chrono::high_resolution_clock::now();
-      w.block(std::format("for (uint64_t {0} = 0; {0} != {1}; {0}++)", IU::genVar("perfRepeat"), perfRepeat - 1), [&]() {
-         print->produce(w, IUSet{}, []() {});
-      });
+      print->produce(w, IUSet{}, []() {});
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double, std::micro> duration = end - start;
       std::cout << std::format("Code gen finished in {:.2f} us", duration.count()) << std::endl;
@@ -186,7 +184,8 @@ void simple_test_query(const std::string& filename) {
 }
 
 /*
-   SELECT l_orderkey, l_quantity
+   --SELECT l_orderkey, l_quantity
+   SELECT l_quantity * 2
    FROM lineitem JOIN orders ON l_orderkey = o_orderkey
 */
 void test_join_query(const std::string& filename) {
@@ -208,8 +207,11 @@ void test_join_query(const std::string& filename) {
                                           std::vector<IU*>{o_orderkey},
                                           std::vector<IU*>{l_orderkey});
 
-   auto limit = std::make_unique<Limit>(std::move(join), 10);
-   auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{l_orderkey, l_quantity});
+   auto exp = makeCallExp("std::multiplies()", std::make_unique<IUExp>(l_quantity), std::make_unique<ConstExp<int>>(2));
+   auto map = std::make_unique<Map>(std::move(join), std::move(exp), "double_quantity", Type::Integer);
+   auto double_l_quantity = map->getIU("double_quantity");
+   auto limit = std::make_unique<Limit>(std::move(map), 10);
+   auto print = std::make_unique<Print>(std::move(limit), std::vector<IU*>{double_l_quantity});
 
    printPlan(print.get());
 
@@ -313,7 +315,6 @@ int main(int argc, char* argv[]) {
 
    // simple_test_query("q1.cpp");
    // dynamically_load_link("data-generator/output/", "q1.cpp");
-
 
    test_join_query("q_join.cpp");
    dynamically_load_link("data-generator/output/", "q_join.cpp");

@@ -20,7 +20,6 @@ Thread model: posix
 - High-Efficiency Code Generation:
     Buffered File I/O: Shifted from global std::cout to passing std::ostream& through the operator tree to allow direct, buffered writing to .cpp source files.
 - Modern C++23 std::print: Utilizes `std::print(out, ...)` for faster, locale-independent formatting compared to traditional stream insertion operators.
-- Indentation Tracking: Added an `int level` parameter to `produce()` and `genBlock()` to generate human-readable, properly nested C++ code.
 - Dynamic JIT Pipeline:
     External Compilation: Added logic to dynamically invoke `g++` with `-shared -fPIC` to transform generated .cpp files into loadable .so shared objects.
 - Runtime Linking: Uses *`dlopen`* and *`dlsym`* to load the compiled query function into the running process without requiring a restart.
