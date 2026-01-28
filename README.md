@@ -62,7 +62,7 @@ The script first uses the `dbgen` tool to generate csv files, then reads and con
 
 ### Code Generation & Compilation:
 ```bash
-make   # Build the query compiler and sample query in p2c.cpp#main
+make   # Build the query compiler 
 ```
 
 ### Execution:
